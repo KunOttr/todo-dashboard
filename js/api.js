@@ -91,6 +91,20 @@ async function apiGetIssues(config) {
   return issues;
 }
 
+async function apiGetIssueBasics(config, issueId) {
+  const data = await gql(
+    config,
+    `query($id:ID!){
+      node(id:$id){ ... on Issue{ state closedAt labels(first:100){ nodes{ id name color } } } }
+    }`,
+    { id: issueId }
+  );
+  const node = data && data.node;
+  return node
+    ? { state: node.state || 'OPEN', closedAt: node.closedAt || null, labels: node.labels ? node.labels.nodes : [] }
+    : { state: 'OPEN', closedAt: null, labels: [] };
+}
+
 async function apiCreateIssue(config, repoId, { title, body, labelIds }) {
   const data = await gql(
     config,

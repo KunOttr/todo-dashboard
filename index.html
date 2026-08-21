@@ -10,114 +10,177 @@
 
   <header class="topbar">
     <div class="brand"><span class="logo">✓</span> GitHub Todo</div>
-    <div class="repo-info" id="repoInfo"></div>
+    <div class="repo-info">
+      <div class="repo-switch" id="repoSwitch">
+        <button type="button" class="repo-switch-btn" id="repoSwitchBtn" title="切换仓库">未连接仓库 ▾</button>
+        <div class="repo-switch-menu hidden" id="repoSwitchMenu"></div>
+      </div>
+      <button id="btnTagsManage" class="btn hidden">标签管理</button>
+    </div>
     <div class="topbar-actions">
-      <label class="switch-wrap" title="已归档任务默认隐藏，可手动开启显示">
-        <input type="checkbox" id="archiveToggle">
-        <span>显示归档</span>
-      </label>
-      <button id="btnNew" class="btn btn-primary">+ 新建待办</button>
-      <button id="btnTagsManage" class="btn">标签管理</button>
+      <button id="btnHelp" class="btn" title="使用帮助">帮助</button>
       <button id="btnSettings" class="btn">设置</button>
     </div>
   </header>
 
-  <section class="filters" aria-label="筛选条件">
-    <div class="filter-row">
+  <section class="filters hidden" id="filters" aria-label="操作面板">
+    <div class="filter-row filter-actions">
+      <button type="button" class="btn" id="btnFilterToggle" title="展开/收起筛选选项">筛选 ▾</button>
       <input type="search" id="searchInput" placeholder="搜索关键词…（匹配标题、描述、标签）">
-      <select id="timeField" title="时间筛选的依据">
-        <option value="created">按创建时间</option>
-        <option value="closed">按完成时间</option>
-      </select>
-      <label class="date-label">从
-        <input type="date" id="startDate">
-      </label>
-      <label class="date-label">到
-        <input type="date" id="endDate">
-      </label>
+      <button id="btnSync" class="btn hidden" title="立即同步待办到 GitHub">已同步</button>
+      <button id="btnNew" class="btn btn-primary action-spacer">+ 新建待办</button>
     </div>
-    <div class="filter-row">
-      <span class="filter-label">标签：</span>
-      <div class="tag-chips" id="tagFilterChips"></div>
-      <label class="match-mode">匹配
-        <select id="tagMatchMode">
-          <option value="any">任一</option>
-          <option value="all">全部</option>
+    <div class="filter-options hidden" id="filterOptions">
+      <div class="filter-row">
+        <select id="timeField" title="时间筛选的依据">
+          <option value="created">按创建时间</option>
+          <option value="closed">按完成时间</option>
         </select>
-      </label>
-      <button class="btn-link" id="btnClearFilters">清除全部筛选</button>
+        <label class="date-label">从
+          <input type="date" id="startDate">
+        </label>
+        <label class="date-label">到
+          <input type="date" id="endDate">
+        </label>
+      </div>
+      <div class="filter-row">
+        <span class="filter-label">标签：</span>
+        <div class="filter-dropdown" id="tagFilterDropdown">
+          <button type="button" class="filter-dropdown-btn" id="tagFilterBtn">标签筛选 ▾</button>
+          <div class="filter-dropdown-menu hidden" id="tagFilterMenu"></div>
+        </div>
+        <label class="match-mode">匹配
+          <select id="tagMatchMode">
+            <option value="any">任一</option>
+            <option value="all">全部</option>
+          </select>
+        </label>
+        <button class="btn-link" id="btnClearFilters">清除全部筛选</button>
+      </div>
+      <div class="filter-row">
+        <label class="switch-wrap" id="archiveWrap" title="已归档任务默认隐藏，可手动开启显示">
+          <input type="checkbox" id="archiveToggle">
+          <span>显示归档</span>
+        </label>
+      </div>
     </div>
   </section>
 
   <main id="main">
-    <div class="no-config" id="noConfigBox">
-      <p>尚未连接 GitHub 仓库。请点击右上角「设置」填写仓库信息与访问令牌。</p>
-      <button class="btn btn-primary" id="btnNoConfigSetup">去设置</button>
-    </div>
+    <div class="no-config hidden" id="noConfigBox"></div>
 
-    <section class="task-block" id="blockOpen">
+    <section class="task-block hidden" id="blockOpen">
       <h2 class="block-title open">未完成 <span class="count" id="countOpen"></span></h2>
       <div class="task-list" id="listOpen"></div>
     </section>
 
-    <section class="task-block" id="blockClosed">
+    <section class="task-block hidden" id="blockClosed">
       <h2 class="block-title closed">已完成 <span class="count" id="countClosed"></span></h2>
       <div class="task-list" id="listClosed"></div>
     </section>
   </main>
 
-  <!-- 设置 / 连接仓库 -->
+  <!-- 进度 11 格选择弹层 -->
+  <div class="progress-popover hidden" id="progressPopover">
+    <div class="progress-popover-grid" id="progressPopoverGrid"></div>
+  </div>
+
+  <!-- 设置 / 多仓库 / 应用设置 -->
   <div class="modal-overlay hidden" id="setupModal">
-    <div class="modal">
-      <h3>连接 GitHub 仓库</h3>
-      <p class="modal-note">
-        使用 GitHub GraphQL API 将待办存为仓库 Issues。Token 仅保存在你的浏览器本地
-        （localStorage），不会上传到别处。首次连接会自动创建「归档」标签和「进度:10%…进度:100%」标签。
-      </p>
-      <label>Owner / 用户名
-        <input type="text" id="setupOwner" placeholder="octocat" autocomplete="off">
-      </label>
-      <label>仓库名
-        <input type="text" id="setupRepo" placeholder="my-todo" autocomplete="off">
-      </label>
-      <label>Personal Access Token
-        <input type="password" id="setupToken" placeholder="github_pat_… / ghp_…" autocomplete="off">
-        <span class="inline-check"><input type="checkbox" id="setupShowToken"> 显示 Token</span>
-      </label>
+    <div class="modal modal-lg">
+      <h3>设置</h3>
+      <div class="section-title">仓库（多仓库支持，连接当前选中的仓库）</div>
+      <div id="repoCards"></div>
+      <button id="btnAddRepo" class="btn">+ 添加仓库</button>
+      <p class="modal-note">每个仓库可独立选择是否支持百分比进度；关闭时该仓库进行中的待办将回退为未完成状态并丢失完成进度。</p>
       <div id="setupMsg"></div>
       <div class="modal-actions">
-        <button id="setupCancel" class="btn">取消</button>
-        <button id="setupTest" class="btn">测试连接</button>
-        <button id="setupSave" class="btn btn-primary">保存并连接</button>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-link danger" id="setupClear">清除本地配置</button>
+        <button id="setupClose" class="btn btn-primary">关闭</button>
       </div>
     </div>
   </div>
 
-  <!-- 新建 / 编辑待办 -->
-  <div class="modal-overlay hidden" id="editModal">
-    <div class="modal">
-      <h3 id="editModalTitle">新建待办</h3>
-      <label>标题
-        <input type="text" id="editIssueTitle" placeholder="待办标题">
-      </label>
-      <label>描述
-        <textarea id="editIssueBody" rows="3" placeholder="补充说明（可选）"></textarea>
-      </label>
-      <label class="progress-field">进度
-        <input type="range" id="editProgress" min="0" max="100" step="10" value="0">
-        <span id="editProgressLabel">0%</span>
-      </label>
-      <label class="checkbox-line">
-        <input type="checkbox" id="editCompleted"> 标记为已完成
-      </label>
-      <div class="tag-edit" id="editTags"></div>
-      <div id="editMsg"></div>
+  <!-- 帮助文档 -->
+  <div class="modal-overlay hidden" id="helpModal">
+    <div class="modal modal-lg">
+      <h3>使用帮助</h3>
+      <div class="help-content">
+        <div class="help-section">
+          <h4>这是什么</h4>
+          <p>一个把 GitHub Issues 当待办库的纯前端管理面板：每条待办就是一个 Issue，通过 GitHub GraphQL API 读写；可静态部署到 GitHub Pages，无需后端。</p>
+        </div>
+        <div class="help-section">
+          <h4>开始使用</h4>
+          <ol>
+            <li>准备 Personal Access Token：fine-grained PAT 仓库访问选目标仓库、<code>Issues</code> 权限设为 <b>Read and write</b>（<code>Metadata: Read</code> 自动附带）；经典 PAT 私有仓库用 <code>repo</code>、公开仓库用 <code>public_repo</code>。</li>
+            <li>点右上角「设置」→「+ 添加仓库」，填写 owner / 仓库名 / Token，并勾选该仓库是否<b>支持百分比进度</b>；保存第一个仓库后会自动连接。</li>
+            <li>Token 只保存在浏览器 localStorage 中，请勿在公共/共享设备上使用。</li>
+          </ol>
+        </div>
+        <div class="help-section">
+          <h4>待办与状态</h4>
+          <ul>
+            <li>每条待办 = 一个 Issue；<b>已完成 / 未完成</b> 对应 Issue 的关闭 / 打开状态。</li>
+            <li>「未完成」在上方（按创建时间倒序，最新在上）；「已完成」在下方（按完成时间倒序，最近完成在上）。</li>
+            <li>点击卡片左侧勾选按钮：未支持百分比的待办点击直接切换完成状态。</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h4>百分比进度（按仓库启用）</h4>
+          <ul>
+            <li>是否支持百分比是<b>每个仓库单独设置</b>的（添加 / 编辑仓库时勾选）。</li>
+            <li>支持百分比的仓库，新建待办可勾选「支持百分比」；该待办用<b>圆环</b>展示进度。</li>
+            <li>点击圆环弹出 <b>0%–100% 共 11 格</b>进度选择条；100% 自动标记完成，调低自动回到进行中。</li>
+            <li>关闭某仓库的百分比时，该仓库进行中待办将回退为未完成并丢失进度（编辑仓库时有确认提示）。</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h4>新建与编辑</h4>
+          <ul>
+            <li>点操作面板「+ 新建待办」，在顶部出现编辑卡片：输入标题 / 描述、点「+ 标签」多选标签、可勾选支持百分比；点「保存」生效，点「取消」丢弃。</li>
+            <li>点卡片「编辑」后，原卡片隐藏、仅显示编辑卡片；编辑卡片内含「标签」与「归档 / 删除」操作。</li>
+            <li><b>先归档再删除</b>：未归档的待办显示「归档」，归档后按钮变为「删除」（红色，需确认）。</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h4>筛选与搜索</h4>
+          <ul>
+            <li>操作面板默认一行：左侧「筛选」（展开 / 收起筛选选项）、搜索框、「同步」按钮（有未同步改动时才显示），右侧「新建待办」。</li>
+            <li>筛选选项：时间（按创建 / 完成时间，起始结束可只填其一）、标签（多选，支持「任一 / 全部」）、「显示归档」开关。</li>
+            <li>关键词搜索匹配标题、描述、标签名，与其它筛选条件叠加生效（与关系）。</li>
+            <li>归档任务默认隐藏；在标签筛选中选中「归档」标签会联动打开「显示归档」。</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h4>多仓库</h4>
+          <ul>
+            <li>设置中可添加 / 编辑 / 删除多个仓库；顶部下拉切换当前仓库（当前项带 ✓ 标记）。</li>
+            <li>各仓库独立配置 Token 与是否支持百分比。</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h4>标签管理</h4>
+          <ul>
+            <li>「标签管理」按钮位于顶部左侧（仓库切换按钮旁边）。</li>
+            <li>全局标签管理中，系统标签（<code>归档</code>、<code>进度:*</code>）默认折叠、只读；普通标签可标记删除（点「删除」置顶变灰、可「恢复」），点「保存」统一删除。</li>
+            <li>给单个待办选标签时只显示普通标签（不含系统标签、无删除按钮）。</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h4>自动同步（防限速）</h4>
+          <ul>
+            <li>所有操作先在本地生效并排队，距最后一次操作 <b>5 分钟</b>后自动批量保存到 GitHub。</li>
+            <li>「同步」按钮显示待同步数量与剩余倒计时，点击立即保存。</li>
+            <li>关闭页面前若仍有待同步改动可能丢失，建议留意同步按钮或主动点击保存。</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h4>部署到 GitHub Pages</h4>
+          <p>纯静态站点，无构建步骤：推送后启用 <b>Settings → Pages → Deploy from a branch</b>（main / root），或使用仓库自带的 GitHub Actions 工作流（推送到 main / master 或手动触发）。</p>
+        </div>
+      </div>
       <div class="modal-actions">
-        <button id="editCancel" class="btn">取消</button>
-        <button id="editSave" class="btn btn-primary">保存</button>
+        <button id="helpClose" class="btn btn-primary">关闭</button>
       </div>
     </div>
   </div>
@@ -135,7 +198,7 @@
       </div>
       <div id="tagMsg"></div>
       <div class="modal-actions">
-        <button id="tagCancel" class="btn">关闭</button>
+        <button id="tagCancel" class="btn">取消</button>
         <button id="tagSave" class="btn btn-primary">保存</button>
       </div>
     </div>

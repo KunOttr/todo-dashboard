@@ -12,14 +12,17 @@ function isArchiveLabel(name) {
 function deriveIssueMeta(issue) {
   const labels = (issue.labels && issue.labels.nodes) || [];
   let progress = 0;
+  let hasProgress = false;
   for (const l of labels) {
     if (isProgressLabel(l.name)) {
+      hasProgress = true;
       const v = parseInt(l.name.slice(APP_CONFIG.PROGRESS_PREFIX.length), 10);
       if (!isNaN(v) && v > progress) progress = v;
     }
   }
   return {
     progress,
+    percent: hasProgress, // 是否带百分比进度标签（0% 也视为支持百分比）
     isArchived: labels.some((l) => isArchiveLabel(l.name)),
     tags: labels.filter((l) => !isProgressLabel(l.name)),
   };
