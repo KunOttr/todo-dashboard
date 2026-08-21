@@ -1,7 +1,5 @@
-/* GitHub GraphQL / Gitea REST 双 API 封装（按 config.provider 分支） */
+/* GitHub GraphQL API 封装 */
 'use strict';
-
-/* ---------------- 基础 HTTP ---------------- */
 
 async function gql(config, query, variables) {
   let res;
@@ -101,10 +99,6 @@ function giteaIssueToInternal(issue) {
 /* ---------------- 仓库 / 标签 / 待办查询 ---------------- */
 
 async function apiGetRepo(config) {
-  if (isGitea(config)) {
-    const repo = await giteaRequest(config, 'GET', `/repos/${config.owner}/${config.repo}`);
-    return { id: String(repo.id), fullName: repo.full_name || '' };
-  }
   const data = await gql(
     config,
     'query($owner:String!,$name:String!){repository(owner:$owner,name:$name){id}}',
@@ -117,10 +111,6 @@ async function apiGetRepo(config) {
 }
 
 async function apiGetLabels(config) {
-  if (isGitea(config)) {
-    const arr = await giteaRequest(config, 'GET', `/repos/${config.owner}/${config.repo}/labels`);
-    return arr.map((l) => ({ id: String(l.id), name: l.name, color: normalizeColor(l.color) }));
-  }
   const data = await gql(
     config,
     `query($owner:String!,$name:String!){
@@ -137,23 +127,6 @@ async function apiGetLabels(config) {
 }
 
 async function apiGetIssues(config) {
-  if (isGitea(config)) {
-    const issues = [];
-    let page = 1;
-    let guard = 0;
-    while (true) {
-      const arr = await giteaRequest(
-        config, 'GET',
-        `/repos/${config.owner}/${config.repo}/issues?state=all&limit=100&page=${page}&sort=created&order=desc`
-      );
-      if (!Array.isArray(arr)) break;
-      issues.push(...arr.filter((i) => !i.pull_request).map(giteaIssueToInternal));
-      if (arr.length < 100) break;
-      page++;
-      if (++guard > 50) break;
-    }
-    return issues;
-  }
   const issues = [];
   let cursor = null;
   let guard = 0;
@@ -182,11 +155,6 @@ async function apiGetIssues(config) {
 }
 
 async function apiGetIssueBasics(config, issueId) {
-  if (isGitea(config)) {
-    const issue = await giteaRequest(config, 'GET', `/repos/${config.owner}/${config.repo}/issues/${issueId}`);
-    const internal = giteaIssueToInternal(issue);
-    return { state: internal.state, closedAt: internal.closedAt, labels: internal.labels.nodes };
-  }
   const data = await gql(
     config,
     `query($id:ID!){
@@ -200,15 +168,7 @@ async function apiGetIssueBasics(config, issueId) {
     : { state: 'OPEN', closedAt: null, labels: [] };
 }
 
-/* ---------------- 待办写操作 ---------------- */
-
 async function apiCreateIssue(config, repoId, { title, body, labelIds }) {
-  if (isGitea(config)) {
-    const issue = await giteaRequest(config, 'POST', `/repos/${config.owner}/${config.repo}/issues`, {
-      title, body: body || '', labels: (labelIds || []).map(String),
-    });
-    return giteaIssueToInternal(issue);
-  }
   const data = await gql(
     config,
     `mutation($repoId:ID!,$title:String!,$body:String,$labelIds:[ID!]){
@@ -222,10 +182,6 @@ async function apiCreateIssue(config, repoId, { title, body, labelIds }) {
 }
 
 async function apiUpdateIssue(config, id, { title, body }) {
-  if (isGitea(config)) {
-    await giteaRequest(config, 'PATCH', `/repos/${config.owner}/${config.repo}/issues/${id}`, { title, body: body || '' });
-    return;
-  }
   const data = await gql(
     config,
     `mutation($id:ID!,$title:String!,$body:String){
@@ -238,35 +194,25 @@ async function apiUpdateIssue(config, id, { title, body }) {
   return data.updateIssue.issue;
 }
 
-async function apiSetIssueState(config, id, state) {
-  if (isGitea(config)) {
-    await giteaRequest(config, 'PATCH', `/repos/${config.owner}/${config.repo}/issues/${id}`, { state });
-    return;
-  }
-  const isClosed = state === 'closed';
+async function apiCloseIssue(config, id) {
   const data = await gql(
     config,
-    `mutation($id:ID!){
-      ${isClosed ? 'closeIssue' : 'reopenIssue'}(input:{issueId:$id}){ issue{ ${ISSUE_FIELDS} } }
-    }`,
+    `mutation($id:ID!){ closeIssue(input:{issueId:$id}){ issue{ ${ISSUE_FIELDS} } } }`,
     { id }
   );
-  return isClosed ? data.closeIssue.issue : data.reopenIssue.issue;
-}
-
-async function apiCloseIssue(config, id) {
-  return apiSetIssueState(config, id, 'closed');
+  return data.closeIssue.issue;
 }
 
 async function apiReopenIssue(config, id) {
-  return apiSetIssueState(config, id, 'open');
+  const data = await gql(
+    config,
+    `mutation($id:ID!){ reopenIssue(input:{issueId:$id}){ issue{ ${ISSUE_FIELDS} } } }`,
+    { id }
+  );
+  return data.reopenIssue.issue;
 }
 
 async function apiDeleteIssue(config, id) {
-  if (isGitea(config)) {
-    await giteaRequest(config, 'DELETE', `/repos/${config.owner}/${config.repo}/issues/${id}`);
-    return;
-  }
   await gql(
     config,
     `mutation($id:ID!){ deleteIssue(input:{issueId:$id}){ repository{ id } } }`,
@@ -274,15 +220,7 @@ async function apiDeleteIssue(config, id) {
   );
 }
 
-/* ---------------- 标签写操作 ---------------- */
-
 async function apiAddLabels(config, labelableId, labelIds) {
-  if (isGitea(config)) {
-    await giteaRequest(config, 'POST', `/repos/${config.owner}/${config.repo}/issues/${labelableId}/labels`, {
-      labels: (labelIds || []).map(String),
-    });
-    return [];
-  }
   const data = await gql(
     config,
     `mutation($id:ID!,$labelIds:[ID!]!){
@@ -296,12 +234,6 @@ async function apiAddLabels(config, labelableId, labelIds) {
 }
 
 async function apiRemoveLabels(config, labelableId, labelIds) {
-  if (isGitea(config)) {
-    for (const lid of labelIds || []) {
-      await giteaRequest(config, 'DELETE', `/repos/${config.owner}/${config.repo}/issues/${labelableId}/labels/${lid}`);
-    }
-    return;
-  }
   const data = await gql(
     config,
     `mutation($id:ID!,$labelIds:[ID!]!){
@@ -315,12 +247,6 @@ async function apiRemoveLabels(config, labelableId, labelIds) {
 }
 
 async function apiCreateLabel(config, repoId, name, color) {
-  if (isGitea(config)) {
-    const l = await giteaRequest(config, 'POST', `/repos/${config.owner}/${config.repo}/labels`, {
-      name, color: normalizeColor(color),
-    });
-    return { id: String(l.id), name: l.name, color: normalizeColor(l.color) };
-  }
   const data = await gql(
     config,
     `mutation($repoId:ID!,$name:String!,$color:String!){
@@ -332,10 +258,6 @@ async function apiCreateLabel(config, repoId, name, color) {
 }
 
 async function apiDeleteLabel(config, labelId) {
-  if (isGitea(config)) {
-    await giteaRequest(config, 'DELETE', `/repos/${config.owner}/${config.repo}/labels/${labelId}`);
-    return;
-  }
   await gql(
     config,
     `mutation($id:ID!){ deleteLabel(input:{id:$id}){ repository{ id } } }`,
