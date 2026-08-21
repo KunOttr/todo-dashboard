@@ -85,6 +85,8 @@ function loadConfig() {
       const oldGlobal = !!(obj.settings && obj.settings.useProgress);
       return {
         repos: obj.repos.map((r) => ({
+          provider: r.provider || 'github',
+          baseUrl: r.baseUrl || null,
           owner: r.owner, repo: r.repo, token: r.token,
           useProgress: r.useProgress != null ? !!r.useProgress : oldGlobal,
         })),
@@ -93,7 +95,7 @@ function loadConfig() {
     }
     // 旧格式 {owner,repo,token} 迁移
     if (obj && obj.owner) {
-      return { repos: [{ owner: obj.owner, repo: obj.repo, token: obj.token, useProgress: false }], activeIndex: 0 };
+      return { repos: [{ provider: 'github', baseUrl: null, owner: obj.owner, repo: obj.repo, token: obj.token, useProgress: false }], activeIndex: 0 };
     }
     return defaultConfig();
   } catch (e) {
@@ -109,6 +111,13 @@ function currentRepoConfig() {
   const repos = state.config.repos;
   if (!repos || !repos.length) return null;
   return repos[state.config.activeIndex] || repos[0];
+}
+
+/* 从仓库 URL 解析 owner/repo 与 gitea 服务器地址 */
+function parseRepoUrl(url) {
+  const m = String(url || '').trim().match(/^(https?:\/\/[^/]+)\/([^/]+)\/([^/]+?)\/?$/);
+  if (!m) return null;
+  return { baseUrl: m[1].replace(/\/+$/, ''), owner: m[2], repo: m[3] };
 }
 
 /* ---------------- 提示 / 加载 ---------------- */
@@ -473,9 +482,13 @@ function renderRepoInfo() {
   const menu = $('#repoSwitchMenu');
   menu.innerHTML = repos.map((r, idx) => {
     const active = idx === state.config.activeIndex;
+    const prov = r.provider === 'gitea'
+      ? 'Gitea' + (r.baseUrl ? ' · ' + r.baseUrl.replace(/^https?:\/\//, '') : '')
+      : 'GitHub';
     return `<button type="button" class="repo-switch-item${active ? ' active' : ''}" data-switch-repo="${idx}">
       <span class="repo-switch-check">${active ? '✓' : ''}</span>
       <span class="repo-switch-name">${escapeHTML(r.owner)} / ${escapeHTML(r.repo)}</span>
+      <span class="repo-switch-prov">${escapeHTML(prov)}</span>
     </button>`;
   }).join('') +
     '<button type="button" class="repo-switch-item manage" data-switch-manage>管理仓库…</button>';
@@ -997,11 +1010,13 @@ function renderRepoCards() {
       return;
     }
     const active = idx === cfg.activeIndex;
+    const providerName = r.provider === 'gitea' ? 'Gitea' : 'GitHub';
     html += `<div class="repo-card">
       <div class="repo-head"><strong>${escapeHTML(r.owner)} / ${escapeHTML(r.repo)}</strong>
+        <span class="sys-badge">${providerName}</span>
         ${active ? '<span class="sys-badge">当前</span>' : ''}
       </div>
-      <div class="repo-meta">Token: ••••${escapeHTML(r.token.slice(-4))} · 百分比: ${r.useProgress ? '开启' : '关闭'}</div>
+      <div class="repo-meta">Token: ••••${escapeHTML(r.token.slice(-4))} · 百分比: ${r.useProgress ? '开启' : '关闭'}${r.provider === 'gitea' ? ' · ' + escapeHTML(r.baseUrl || '') : ''}</div>
       <div class="repo-actions">
         ${active ? '' : `<button type="button" class="btn" data-repo-connect="${idx}">连接</button>`}
         <button type="button" class="btn" data-repo-edit="${idx}">编辑</button>
@@ -1009,7 +1024,7 @@ function renderRepoCards() {
       </div>
     </div>`;
   });
-  if (edit && edit.mode === 'add') html += repoEditCardHTML(-1, { owner: '', repo: '', token: '', useProgress: false });
+  if (edit && edit.mode === 'add') html += repoEditCardHTML(-1, { provider: 'github', baseUrl: null, owner: '', repo: '', token: '', useProgress: false });
   if (!cfg.repos.length && !(edit && edit.mode === 'add')) {
     html = '<div class="card-time">尚未配置仓库，点击下方按钮添加。</div>';
   }
@@ -1017,15 +1032,31 @@ function renderRepoCards() {
 }
 
 function repoEditCardHTML(idx, r) {
+  const prov = r.provider || 'github';
+  const isGitea = prov === 'gitea';
+  const urlVal = r.url
+    || (isGitea ? (r.baseUrl || '') + '/' + r.owner + '/' + r.repo : 'https://github.com/' + r.owner + '/' + r.repo);
   return `<div class="repo-card repo-edit-card">
+    <label>API 格式
+      <select data-repo-field="provider">
+        <option value="github"${prov === 'github' ? ' selected' : ''}>GitHub GraphQL</option>
+        <option value="gitea"${isGitea ? ' selected' : ''}>Gitea REST</option>
+      </select>
+    </label>
+    <label>仓库 URL
+      <input type="text" data-repo-field="url" value="${escapeHTML(urlVal)}" placeholder="https://github.com/owner/repo 或 https://gitea.com/owner/repo">
+    </label>
     <label>Owner / 用户名
       <input type="text" data-repo-field="owner" value="${escapeHTML(r.owner)}" placeholder="octocat">
     </label>
     <label>仓库名
       <input type="text" data-repo-field="repo" value="${escapeHTML(r.repo)}" placeholder="my-todo">
     </label>
+    <label class="gitea-only${isGitea ? '' : ' hidden'}">Gitea 服务器地址（从 URL 自动识别）
+      <input type="text" data-repo-field="baseUrl" value="${escapeHTML(r.baseUrl || '')}" placeholder="https://gitea.com">
+    </label>
     <label>Personal Access Token
-      <input type="password" data-repo-field="token" value="${escapeHTML(r.token)}" placeholder="github_pat_… / ghp_…">
+      <input type="password" data-repo-field="token" value="${escapeHTML(r.token)}" placeholder="github_pat_… / ghp_… / gitea token">
     </label>
     <label class="checkbox-line">
       <input type="checkbox" data-repo-field="useProgress"${r.useProgress ? ' checked' : ''}> 支持百分比进度
@@ -1038,15 +1069,36 @@ function repoEditCardHTML(idx, r) {
   </div>`;
 }
 
+/* 从编辑卡片读取仓库配置（URL 优先，其次 owner/repo + baseUrl） */
+function readRepoForm(card) {
+  const provider = card.querySelector('[data-repo-field="provider"]').value;
+  const url = card.querySelector('[data-repo-field="url"]').value.trim();
+  const token = card.querySelector('[data-repo-field="token"]').value.trim();
+  const useProgress = card.querySelector('[data-repo-field="useProgress"]').checked;
+  let owner = card.querySelector('[data-repo-field="owner"]').value.trim();
+  let repo = card.querySelector('[data-repo-field="repo"]').value.trim();
+  let baseUrl = null;
+  if (url) {
+    const parsed = parseRepoUrl(url);
+    if (!parsed) return { error: '仓库 URL 格式不正确，应为 https://主机/owner/仓库' };
+    owner = parsed.owner;
+    repo = parsed.repo;
+    baseUrl = provider === 'gitea' ? parsed.baseUrl : null;
+  } else if (provider === 'gitea') {
+    baseUrl = card.querySelector('[data-repo-field="baseUrl"]').value.trim();
+  }
+  if (!owner || !repo || !token) return { error: '请填写完整信息' };
+  if (provider === 'gitea' && !baseUrl) return { error: '请填写 Gitea 服务器地址或仓库 URL' };
+  return { provider, baseUrl, owner, repo, token, useProgress };
+}
+
 function saveRepoCard(idx) {
   const card = $('#repoCards').querySelector('.repo-edit-card');
   if (!card) return;
-  const owner = card.querySelector('[data-repo-field="owner"]').value.trim();
-  const repo = card.querySelector('[data-repo-field="repo"]').value.trim();
-  const token = card.querySelector('[data-repo-field="token"]').value.trim();
-  const useProgress = card.querySelector('[data-repo-field="useProgress"]').checked;
   const msg = $('#setupMsg');
-  if (!owner || !repo || !token) { msg.textContent = '请填写完整信息'; msg.className = ''; return; }
+  const form = readRepoForm(card);
+  if (form.error) { msg.textContent = form.error; msg.className = ''; return; }
+  const { owner, repo, token, useProgress } = form;
 
   const oldCfg = idx === -1 ? null : state.config.repos[idx];
   const wasActive = idx === state.config.activeIndex;
@@ -1061,7 +1113,7 @@ function saveRepoCard(idx) {
   }
 
   const wasEmpty = state.config.repos.length === 0;
-  const newCfg = { owner, repo, token, useProgress };
+  const newCfg = form;
   if (idx === -1) {
     state.config.repos.push(newCfg);
   } else {
@@ -1095,16 +1147,13 @@ function saveRepoCard(idx) {
 async function testRepo() {
   const card = $('#repoCards').querySelector('.repo-edit-card');
   if (!card) return;
-  const owner = card.querySelector('[data-repo-field="owner"]').value.trim();
-  const repo = card.querySelector('[data-repo-field="repo"]').value.trim();
-  const token = card.querySelector('[data-repo-field="token"]').value.trim();
   const msg = $('#setupMsg');
-  if (!owner || !repo || !token) { msg.textContent = '请填写完整信息'; return; }
+  const form = readRepoForm(card);
+  if (form.error) { msg.textContent = form.error; return; }
   msg.textContent = '正在测试…';
   try {
-    const cfg = { owner, repo, token };
-    await apiGetRepo(cfg);
-    const labels = await apiGetLabels(cfg);
+    await apiGetRepo(form);
+    const labels = await apiGetLabels(form);
     msg.textContent = '连接成功：找到仓库（' + labels.length + ' 个现有标签）。';
     msg.className = 'ok';
   } catch (e) {
@@ -1389,6 +1438,34 @@ function bindEvents() {
     else if (save) saveRepoCard(parseInt(save.dataset.repoSave, 10));
     else if (cancel) { state.repoCardEdit = null; renderRepoCards(); }
     else if (test) testRepo();
+  });
+  // 仓库表单：切换 API 格式时显示/隐藏 Gitea 服务器地址
+  $('#repoCards').addEventListener('change', (e) => {
+    const el = e.target.closest('[data-repo-field="provider"]');
+    if (!el) return;
+    const card = el.closest('.repo-edit-card');
+    if (!card) return;
+    const gitea = el.value === 'gitea';
+    const urlInput = card.querySelector('[data-repo-field="url"]');
+    const baseLabel = card.querySelector('.gitea-only');
+    if (baseLabel) baseLabel.classList.toggle('hidden', !gitea);
+    if (urlInput) urlInput.placeholder = gitea
+      ? 'https://gitea.com/owner/repo'
+      : 'https://github.com/owner/repo';
+  });
+  // 仓库表单：输入 URL 时自动填充 owner/repo/baseUrl
+  $('#repoCards').addEventListener('input', (e) => {
+    const el = e.target.closest('[data-repo-field="url"]');
+    if (!el) return;
+    const card = el.closest('.repo-edit-card');
+    if (!card) return;
+    const parsed = parseRepoUrl(el.value);
+    if (!parsed) return;
+    card.querySelector('[data-repo-field="owner"]').value = parsed.owner;
+    card.querySelector('[data-repo-field="repo"]').value = parsed.repo;
+    const prov = card.querySelector('[data-repo-field="provider"]').value;
+    const baseInput = card.querySelector('[data-repo-field="baseUrl"]');
+    if (prov === 'gitea' && baseInput) baseInput.value = parsed.baseUrl;
   });
 }
 

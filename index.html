@@ -112,8 +112,11 @@
         <div class="help-section">
           <h4>开始使用</h4>
           <ol>
-            <li>准备 Personal Access Token：fine-grained PAT 仓库访问选目标仓库、<code>Issues</code> 权限设为 <b>Read and write</b>（<code>Metadata: Read</code> 自动附带）；经典 PAT 私有仓库用 <code>repo</code>、公开仓库用 <code>public_repo</code>。</li>
-            <li>点右上角「设置」→「+ 添加仓库」，填写 owner / 仓库名 / Token，并勾选该仓库是否<b>支持百分比进度</b>；保存第一个仓库后会自动连接。</li>
+            <li>准备 Personal Access Token：fine-grained PAT 仓库访问选目标仓库、<code>Issues</code> 权限设为 <b>Read and write</b>（<code>Metadata: Read</code> 自动附带）；经典 PAT 私有仓库用 <code>repo</code>、公开仓库用 <code>public_repo</code>。Gitea 仓库用 Gitea 的 Access Token（需仓库读写权限）。</li>
+            <li>点右上角「设置」→「+ 添加仓库」，选择 <b>API 格式</b>（GitHub GraphQL / Gitea REST），填写 <b>仓库 URL</b>（自动识别 owner / 仓库名，Gitea 会同步识别服务器地址）、Token，并勾选该仓库是否<b>支持百分比进度</b>；保存第一个仓库后会自动连接。</li>
+            <li>支持 Gitea 官网（gitea.com）或任意自建 Gitea 实例，粘贴仓库 URL 即可。</li>
+            <li><b>自建 Gitea 需开启 CORS</b>：在服务器 <code>app.ini</code> 的 <code>[cors]</code> 段设置 <code>ENABLED = true</code>、<code>ALLOW_DOMAIN = *</code>（<code>METHODS</code> 需含 <code>OPTIONS</code>），修改后重启 Gitea；否则浏览器跨域预检（OPTIONS）会被拒绝，表现为「连接失败」。</li>
+            <li>可精确限定来源：<code>ALLOW_DOMAIN = 192.168.1.*, *.hirobot.club</code>（按正则匹配 Origin，支持局域网与子域名）。若预检返回 200 但仍报 CORS error，说明 Origin 未匹配——本地用 <code>localhost</code>/<code>127.0.0.1</code> 打开页面时需把它们加入列表；用 <code>file://</code> 直接打开时 Origin 为 <code>null</code>，需额外加 <code>null</code>（建议改用 HTTP 静态服务打开）。若 Gitea 前有反向代理，需在代理层同步放行 CORS 头。</li>
             <li>Token 只保存在浏览器 localStorage 中，请勿在公共/共享设备上使用。</li>
           </ol>
         </div>
@@ -155,7 +158,7 @@
           <h4>多仓库</h4>
           <ul>
             <li>设置中可添加 / 编辑 / 删除多个仓库；顶部下拉切换当前仓库（当前项带 ✓ 标记）。</li>
-            <li>各仓库独立配置 Token 与是否支持百分比。</li>
+            <li>每个仓库可选择 API 格式（<b>GitHub GraphQL</b> 或 <b>Gitea REST</b>），支持粘贴自定义仓库 URL（如 Gitea 自建实例）；各仓库独立配置 Token 与是否支持百分比。</li>
           </ul>
         </div>
         <div class="help-section">
