@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitHub Issues 待办管理</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand"><span class="logo">✓</span> GitHub Todo</div>
+    <div class="repo-info" id="repoInfo"></div>
+    <div class="topbar-actions">
+      <label class="switch-wrap" title="已归档任务默认隐藏，可手动开启显示">
+        <input type="checkbox" id="archiveToggle">
+        <span>显示归档</span>
+      </label>
+      <button id="btnNew" class="btn btn-primary">+ 新建待办</button>
+      <button id="btnTagsManage" class="btn">标签管理</button>
+      <button id="btnSettings" class="btn">设置</button>
+    </div>
+  </header>
+
+  <section class="filters" aria-label="筛选条件">
+    <div class="filter-row">
+      <input type="search" id="searchInput" placeholder="搜索关键词…（匹配标题、描述、标签）">
+      <select id="timeField" title="时间筛选的依据">
+        <option value="created">按创建时间</option>
+        <option value="closed">按完成时间</option>
+      </select>
+      <label class="date-label">从
+        <input type="date" id="startDate">
+      </label>
+      <label class="date-label">到
+        <input type="date" id="endDate">
+      </label>
+    </div>
+    <div class="filter-row">
+      <span class="filter-label">标签：</span>
+      <div class="tag-chips" id="tagFilterChips"></div>
+      <label class="match-mode">匹配
+        <select id="tagMatchMode">
+          <option value="any">任一</option>
+          <option value="all">全部</option>
+        </select>
+      </label>
+      <button class="btn-link" id="btnClearFilters">清除全部筛选</button>
+    </div>
+  </section>
+
+  <main id="main">
+    <div class="no-config" id="noConfigBox">
+      <p>尚未连接 GitHub 仓库。请点击右上角「设置」填写仓库信息与访问令牌。</p>
+      <button class="btn btn-primary" id="btnNoConfigSetup">去设置</button>
+    </div>
+
+    <section class="task-block" id="blockOpen">
+      <h2 class="block-title open">未完成 <span class="count" id="countOpen"></span></h2>
+      <div class="task-list" id="listOpen"></div>
+    </section>
+
+    <section class="task-block" id="blockClosed">
+      <h2 class="block-title closed">已完成 <span class="count" id="countClosed"></span></h2>
+      <div class="task-list" id="listClosed"></div>
+    </section>
+  </main>
+
+  <!-- 设置 / 连接仓库 -->
+  <div class="modal-overlay hidden" id="setupModal">
+    <div class="modal">
+      <h3>连接 GitHub 仓库</h3>
+      <p class="modal-note">
+        使用 GitHub GraphQL API 将待办存为仓库 Issues。Token 仅保存在你的浏览器本地
+        （localStorage），不会上传到别处。首次连接会自动创建「归档」标签和「进度:10%…进度:100%」标签。
+      </p>
+      <label>Owner / 用户名
+        <input type="text" id="setupOwner" placeholder="octocat" autocomplete="off">
+      </label>
+      <label>仓库名
+        <input type="text" id="setupRepo" placeholder="my-todo" autocomplete="off">
+      </label>
+      <label>Personal Access Token
+        <input type="password" id="setupToken" placeholder="github_pat_… / ghp_…" autocomplete="off">
+        <span class="inline-check"><input type="checkbox" id="setupShowToken"> 显示 Token</span>
+      </label>
+      <div id="setupMsg"></div>
+      <div class="modal-actions">
+        <button id="setupCancel" class="btn">取消</button>
+        <button id="setupTest" class="btn">测试连接</button>
+        <button id="setupSave" class="btn btn-primary">保存并连接</button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-link danger" id="setupClear">清除本地配置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新建 / 编辑待办 -->
+  <div class="modal-overlay hidden" id="editModal">
+    <div class="modal">
+      <h3 id="editModalTitle">新建待办</h3>
+      <label>标题
+        <input type="text" id="editIssueTitle" placeholder="待办标题">
+      </label>
+      <label>描述
+        <textarea id="editIssueBody" rows="3" placeholder="补充说明（可选）"></textarea>
+      </label>
+      <label class="progress-field">进度
+        <input type="range" id="editProgress" min="0" max="100" step="10" value="0">
+        <span id="editProgressLabel">0%</span>
+      </label>
+      <label class="checkbox-line">
+        <input type="checkbox" id="editCompleted"> 标记为已完成
+      </label>
+      <div class="tag-edit" id="editTags"></div>
+      <div id="editMsg"></div>
+      <div class="modal-actions">
+        <button id="editCancel" class="btn">取消</button>
+        <button id="editSave" class="btn btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 标签管理 / 编辑待办标签 -->
+  <div class="modal-overlay hidden" id="tagModal">
+    <div class="modal">
+      <h3>标签管理</h3>
+      <p class="modal-note" id="tagModalNote"></p>
+      <div id="tagList"></div>
+      <div class="new-tag-row">
+        <input type="text" id="newTagName" placeholder="新标签名" maxlength="50">
+        <input type="color" id="newTagColor" value="#0969da">
+        <button class="btn btn-primary" id="newTagAdd">添加</button>
+      </div>
+      <div id="tagMsg"></div>
+      <div class="modal-actions">
+        <button id="tagCancel" class="btn">关闭</button>
+        <button id="tagSave" class="btn btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 加载遮罩 -->
+  <div class="loading hidden" id="loading">
+    <div class="spinner"></div>
+  </div>
+
+  <noscript><p style="text-align:center;padding:40px">本应用需要启用 JavaScript。</p></noscript>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/filters.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
