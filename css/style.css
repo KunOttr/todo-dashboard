@@ -497,5 +497,6 @@ main {
   color: var(--green); font-weight: 700;
 }
 .repo-switch-name { flex: 1; word-break: break-all; line-height: 1.4; }
+.repo-switch-prov { flex-shrink: 0; font-size: 11px; color: var(--text-muted); white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 
 
