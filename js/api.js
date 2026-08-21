@@ -68,6 +68,18 @@ function normalizeColor(c) {
   return String(c || '').replace(/^#/, '');
 }
 
+const ISSUE_FIELDS = `
+  id
+  number
+  title
+  body
+  state
+  createdAt
+  closedAt
+  url
+  labels(first: 100) { nodes { id name color } }
+`;
+
 /* Gitea issue → 内部结构（内部 id 使用 issue 序号 index，REST 操作都基于它） */
 function giteaIssueToInternal(issue) {
   const labels = (issue.labels || []).map((l) => ({
