@@ -124,6 +124,13 @@ global.fetch = async () => { throw new TypeError('Failed to fetch'); };
 let threw3 = '';
 try { await apiGetRepo(cfg); } catch (e) { threw3 = e.message; }
 assert(threw3.indexOf('[cors]') >= 0 && threw3.indexOf('ENABLED') >= 0, 'CORS/网络失败给出配置提示');
+
+// HTTPS 页面请求 HTTP Gitea → 混合内容提示
+global.window = { location: { protocol: 'https:' } };
+let threw4 = '';
+try { await apiGetRepo({ provider: 'gitea', baseUrl: 'http://gitea.example', owner: 'o', repo: 'r', token: 't' }); } catch (e) { threw4 = e.message; }
+delete global.window;
+assert(threw4.indexOf('混合内容') >= 0 || threw4.indexOf('HTTPS') >= 0, 'HTTPS 页面访问 HTTP Gitea 提示混合内容');
 console.log('--- GITEA TESTS DONE ---');
 `;
 

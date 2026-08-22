@@ -36,7 +36,12 @@ function giteaApiBase(config) {
 }
 
 async function giteaRequest(config, method, path, body) {
-  const url = giteaApiBase(config) + path;
+  const apiBase = giteaApiBase(config);
+  // HTTPS 页面请求 HTTP 接口会被浏览器拦截（混合内容）
+  if (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && apiBase.indexOf('http://') === 0) {
+    throw new Error('连接失败：当前页面为 HTTPS，但 Gitea 地址是 HTTP，浏览器会拦截混合内容。请为 Gitea 配置 HTTPS，并使用 https:// 的服务器地址。');
+  }
+  const url = apiBase + path;
   let res;
   try {
     res = await fetch(url, {
