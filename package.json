@@ -1,0 +1,14 @@
+{
+  "name": "github-todo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "纯前端 GitHub Issues 待办管理面板（生产级构建：esbuild 合并压缩 + GitHub Pages Actions 部署）",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node test/integration-test.js && node test/api-github-test.js && node test/api-gitea-test.js",
+    "serve": "node build.mjs && npx --yes serve dist"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
