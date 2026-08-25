@@ -72,10 +72,11 @@ function setsEqual(a, b) {
 /* ---------------- 配置（多仓库） ---------------- */
 
 function defaultConfig() {
-  return { repos: [], activeIndex: 0 };
+  return { repos: [], activeIndex: 0, rememberToken: true };
 }
 
-function loadConfig() {
+/* 从存储读取配置；token 若为密文则尝试解密，解密失败（会话密钥缺失）置空待用户重填 */
+async function loadConfig() {
   try {
     const raw = localStorage.getItem(APP_CONFIG.STORAGE_KEY);
     if (!raw) return defaultConfig();
@@ -83,19 +84,30 @@ function loadConfig() {
     if (obj && Array.isArray(obj.repos)) {
       // 旧版本全局 settings.useProgress 迁移到每个仓库
       const oldGlobal = !!(obj.settings && obj.settings.useProgress);
-      return {
-        repos: obj.repos.map((r) => ({
+      const key = await getTokenKey();
+      const repos = [];
+      for (const r of obj.repos) {
+        let token = r.token || '';
+        if (isEncryptedToken(token)) {
+          token = key ? await decryptToken(token, key) : '';
+          if (!token) console.warn('Token 无法解密（会话密钥缺失或已更换），请在设置中重新填写');
+        }
+        repos.push({
           provider: r.provider || 'github',
           baseUrl: r.baseUrl || null,
-          owner: r.owner, repo: r.repo, token: r.token,
+          owner: r.owner, repo: r.repo, token,
           useProgress: r.useProgress != null ? !!r.useProgress : oldGlobal,
-        })),
+        });
+      }
+      return {
+        repos,
         activeIndex: obj.activeIndex != null ? obj.activeIndex : 0,
+        rememberToken: obj.rememberToken !== false, // 旧数据默认记住，兼容升级
       };
     }
     // 旧格式 {owner,repo,token} 迁移
     if (obj && obj.owner) {
-      return { repos: [{ provider: 'github', baseUrl: null, owner: obj.owner, repo: obj.repo, token: obj.token, useProgress: false }], activeIndex: 0 };
+      return { repos: [{ provider: 'github', baseUrl: null, owner: obj.owner, repo: obj.repo, token: obj.token || '', useProgress: false }], activeIndex: 0, rememberToken: true };
     }
     return defaultConfig();
   } catch (e) {
@@ -103,8 +115,26 @@ function loadConfig() {
   }
 }
 
+/* 保存配置：token 以 AES-GCM 密文落盘；串行队列避免并发写竞态 */
+let saveConfigChain = Promise.resolve();
 function saveConfig() {
-  localStorage.setItem(APP_CONFIG.STORAGE_KEY, JSON.stringify(state.config));
+  saveConfigChain = saveConfigChain.then(() => doSaveConfig()).catch((e) => console.error('保存配置失败', e));
+}
+
+async function doSaveConfig() {
+  const cfg = state.config;
+  const clone = JSON.parse(JSON.stringify(cfg));
+  const key = await getOrCreateTokenKey();
+  if (key) {
+    if (cfg.rememberToken !== false) persistTokenKey();
+    else forgetPersistedTokenKey();
+    for (const r of clone.repos) {
+      if (r.token) r.token = await encryptToken(r.token, key);
+    }
+  } else {
+    console.warn('当前环境不支持 WebCrypto，Token 将以明文保存在 localStorage（建议通过 HTTPS 访问）');
+  }
+  localStorage.setItem(APP_CONFIG.STORAGE_KEY, JSON.stringify(clone));
 }
 
 function currentRepoConfig() {
@@ -996,6 +1026,8 @@ function openSetupModal() {
 }
 
 function renderSetupModal() {
+  const toggle = $('#rememberTokenToggle');
+  if (toggle) toggle.checked = state.config.rememberToken !== false;
   renderRepoCards();
 }
 
@@ -1011,12 +1043,13 @@ function renderRepoCards() {
     }
     const active = idx === cfg.activeIndex;
     const providerName = r.provider === 'gitea' ? 'Gitea' : 'GitHub';
+    const tokenState = r.token ? '已配置' : '未配置';
     html += `<div class="repo-card">
       <div class="repo-head"><strong>${escapeHTML(r.owner)} / ${escapeHTML(r.repo)}</strong>
         <span class="sys-badge">${providerName}</span>
         ${active ? '<span class="sys-badge">当前</span>' : ''}
       </div>
-      <div class="repo-meta">Token: ••••${escapeHTML(r.token.slice(-4))} · 百分比: ${r.useProgress ? '开启' : '关闭'}${r.provider === 'gitea' ? ' · ' + escapeHTML(r.baseUrl || '') : ''}</div>
+      <div class="repo-meta">Token: ${tokenState} · 百分比: ${r.useProgress ? '开启' : '关闭'}${r.provider === 'gitea' ? ' · ' + escapeHTML(r.baseUrl || '') : ''}</div>
       <div class="repo-actions">
         ${active ? '' : `<button type="button" class="btn" data-repo-connect="${idx}">连接</button>`}
         <button type="button" class="btn" data-repo-edit="${idx}">编辑</button>
@@ -1056,7 +1089,8 @@ function repoEditCardHTML(idx, r) {
       <input type="text" data-repo-field="baseUrl" value="${escapeHTML(r.baseUrl || '')}" placeholder="https://gitea.com">
     </label>
     <label>Personal Access Token
-      <input type="password" data-repo-field="token" value="${escapeHTML(r.token)}" placeholder="github_pat_… / ghp_… / gitea token">
+      <input type="password" data-repo-field="token" autocomplete="off" value=""
+        placeholder="${idx === -1 ? '必填：github_pat_… / ghp_… / gitea token' : '留空保持不变，输入则覆盖（不会回显旧值）'}">
     </label>
     <label class="checkbox-line">
       <input type="checkbox" data-repo-field="useProgress"${r.useProgress ? ' checked' : ''}> 支持百分比进度
@@ -1087,7 +1121,7 @@ function readRepoForm(card) {
   } else if (provider === 'gitea') {
     baseUrl = card.querySelector('[data-repo-field="baseUrl"]').value.trim();
   }
-  if (!owner || !repo || !token) return { error: '请填写完整信息' };
+  if (!owner || !repo) return { error: '请填写完整信息' };
   if (provider === 'gitea' && !baseUrl) return { error: '请填写 Gitea 服务器地址或仓库 URL' };
   return { provider, baseUrl, owner, repo, token, useProgress };
 }
@@ -1098,9 +1132,16 @@ function saveRepoCard(idx) {
   const msg = $('#setupMsg');
   const form = readRepoForm(card);
   if (form.error) { msg.textContent = form.error; msg.className = ''; return; }
+  const oldCfg = idx === -1 ? null : state.config.repos[idx];
+  // 编辑模式下 Token 留空 = 保留原 Token（不回显、不覆盖）；新增或原无 Token 则必须填写
+  if (!form.token) {
+    if (!oldCfg || !oldCfg.token) {
+      msg.textContent = '请填写 Personal Access Token'; msg.className = ''; return;
+    }
+    form.token = oldCfg.token;
+  }
   const { owner, repo, token, useProgress } = form;
 
-  const oldCfg = idx === -1 ? null : state.config.repos[idx];
   const wasActive = idx === state.config.activeIndex;
   const oldUseProgress = oldCfg ? !!oldCfg.useProgress : false;
 
@@ -1150,6 +1191,7 @@ async function testRepo() {
   const msg = $('#setupMsg');
   const form = readRepoForm(card);
   if (form.error) { msg.textContent = form.error; return; }
+  if (!form.token) { msg.textContent = '测试需要 Token：请先填入 Token（编辑已有仓库时留空会沿用已保存值，请先保存再测试）'; return; }
   msg.textContent = '正在测试…';
   try {
     await apiGetRepo(form);
@@ -1424,6 +1466,25 @@ function bindEvents() {
   // 设置弹窗
   $('#setupClose').addEventListener('click', () => closeModal($('#setupModal')));
   $('#helpClose').addEventListener('click', () => closeModal($('#helpModal')));
+  $('#rememberTokenToggle').addEventListener('change', (e) => {
+    state.config.rememberToken = e.target.checked;
+    const msg = $('#setupMsg');
+    if (e.target.checked) {
+      persistTokenKey();
+      msg.textContent = '已启用「记住 Token」：本设备下次打开时自动解密，无需重新输入。';
+      msg.className = 'ok';
+    } else {
+      forgetPersistedTokenKey();
+      msg.textContent = '已关闭「记住 Token」：关闭浏览器后需重新输入各仓库 Token（安全性更高）。';
+      msg.className = '';
+    }
+    saveConfig();
+  });
+  // Token 输入框：聚焦即清空，彻底隐藏已存值，方便直接粘贴新 Token
+  $('#repoCards').addEventListener('focusin', (e) => {
+    const el = e.target.closest('[data-repo-field="token"]');
+    if (el) el.value = '';
+  });
   $('#btnAddRepo').addEventListener('click', () => { state.repoCardEdit = { mode: 'add' }; renderRepoCards(); });
   $('#repoCards').addEventListener('click', (e) => {
     const connect = e.target.closest('[data-repo-connect]');
@@ -1473,7 +1534,7 @@ function bindEvents() {
 
 async function init() {
   bindEvents();
-  state.config = loadConfig();
+  state.config = await loadConfig();
   if (!state.config.repos.length) {
     state.connState = 'none';
     renderAppState();

@@ -48,6 +48,11 @@ global.localStorage = {
   setItem: (k, v) => { store[k] = String(v); },
   removeItem: (k) => { delete store[k]; },
 };
+global.sessionStorage = {
+  getItem: (k) => store[k] || null,
+  setItem: (k, v) => { store[k] = String(v); },
+  removeItem: (k) => { delete store[k]; },
+};
 
 // ---- 有状态的假服务端 + API 桩（记录调用）----
 let calls = [];
@@ -134,6 +139,7 @@ async function apiRemoveLabels(cfg, id, ids) {
 // ---- 装载源码 ----
 const src =
   fs.readFileSync('js/config.js', 'utf8') + '\n' +
+  fs.readFileSync('js/crypto.js', 'utf8') + '\n' +
   fs.readFileSync('js/filters.js', 'utf8') + '\n' +
   fs.readFileSync('js/app.js', 'utf8');
 store['github-todo-config'] = JSON.stringify({ repos: [{ owner: 'o', repo: 'r', token: 't' }], activeIndex: 0, settings: { useProgress: false } });
@@ -141,7 +147,8 @@ store['github-todo-config'] = JSON.stringify({ repos: [{ owner: 'o', repo: 'r', 
 const testCode = `
 const assert = (cond, msg) => { if (!cond) { console.error('FAIL: ' + msg); process.exitCode = 1; } else console.log('PASS: ' + msg); };
 
-// 确保连接完成
+// 确保连接完成（init() 的 loadConfig 为异步，先让它的微任务跑完）
+await new Promise((r) => setTimeout(r, 0));
 await connect();
 
 // 配置存在时不再显示"尚未配置仓库"占位
