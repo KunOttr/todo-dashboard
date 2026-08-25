@@ -335,14 +335,81 @@ main {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ========== 响应式 ========== */
+/* 平板 / 手机：纵向堆叠、触摸友好、全宽输入 */
 @media (max-width: 720px) {
-  .topbar { padding: 10px 14px; }
-  .filters { top: 50px; margin-top: 12px; }
-  .card-actions { flex-direction: row; flex-wrap: wrap; }
-  .card-actions .btn-link { text-align: left; }
+  .topbar {
+    padding: 10px 14px;
+    gap: 10px;
+    position: static;          /* 顶栏换行后取消吸顶，避免遮挡内容 */
+  }
+  .brand { flex: 1 1 auto; font-size: 16px; }
+  .repo-info { flex-basis: 100%; order: 3; }
+  .topbar-actions { flex: 1 1 auto; justify-content: flex-end; }
+
+  .filters {
+    position: static;          /* 移动端不吸顶，防止与换行的顶栏重叠 */
+    top: auto;
+    margin-top: 12px;
+    padding: 12px 14px;
+    gap: 8px;
+  }
+  /* 操作行纵向堆叠：筛选 / 搜索 / 新建 占满整行 */
+  .filter-actions { flex-direction: column; align-items: stretch; }
+  .filter-actions .action-spacer { margin-left: 0; }
+  #searchInput { min-width: 0; width: 100%; }
+  .filter-actions #btnNew,
+  .filter-actions #btnSync { width: 100%; }
+  .filter-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .date-label, .match-mode { width: 100%; }
+  .filter-dropdown { width: 100%; }
+  .filter-dropdown-btn { width: 100%; text-align: left; }
+  .filter-dropdown-menu { width: 100%; max-width: 100%; left: 0; right: 0; }
+
+  /* 卡片：勾选 + 主体保持一行，操作按钮换行占满底部 */
+  .task-card { flex-wrap: wrap; }
+  .card-left { padding-top: 0; }
+  .card-actions {
+    flex-basis: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .card-actions .btn-link { flex: 1; text-align: center; }
+
   .progress-row { flex-wrap: wrap; }
   .progress-row input[type="range"] { width: 100%; }
-  .modal-overlay { padding: 4vh 10px; }
+  .modal-overlay { padding: 3vh 10px; }
+  .modal { padding: 18px; }
+  .new-tag-row { flex-wrap: wrap; }
+  .new-tag-row input[type="text"] { flex-basis: 100%; }
+  .repo-edit-card input[type="text"], .repo-edit-card input[type="password"] { width: 100%; }
+}
+
+/* 超小屏（手机竖屏）微调 */
+@media (max-width: 480px) {
+  body { font-size: 13px; }
+  .topbar { padding: 8px 12px; }
+  .brand { font-size: 15px; }
+  .repo-switch-btn { max-width: 160px; font-size: 12px; }
+  main { padding: 0 12px; margin-top: 16px; }
+  .task-card { padding: 12px; }
+  .card-title { font-size: 14px; }
+  .progress-popover { width: min(92vw, 240px); }
+  .toast { font-size: 13px; max-width: 94vw; }
+  .modal h3 { font-size: 16px; }
+}
+
+/* 打印：隐藏交互控件，仅保留待办列表 */
+@media print {
+  .topbar, .filters, .modal-overlay, .toast, .loading,
+  .card-actions, .progress-popover { display: none !important; }
+  body { background: #fff; }
+  main { margin: 0; }
 }
 
 /* ========== 错误横幅 ========== */
