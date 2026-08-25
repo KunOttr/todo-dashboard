@@ -1,2 +1,10 @@
-.workbuddy
-.idea
+# 依赖与构建产物（CI 会自动 npm ci + npm run build，无需提交）
+node_modules/
+dist/
+
+# 系统 / 编辑器 / 本地辅助
+.workbuddy/
+.idea/
+.DS_Store
+*.log
+Thumbs.db
