@@ -2,6 +2,9 @@
 
 一个纯前端、可直接部署到 **GitHub Pages** 的待办管理面板。所有数据都存在你自己的 GitHub 仓库里——每条待办就是一个 **Issue**，通过 **GitHub GraphQL API** 读写，无需后端服务。
 
+<img width="1277" height="574" alt="图片" src="https://github.com/user-attachments/assets/d2ce654a-bd40-443e-a215-3468767a8aaa" />
+
+
 ## 功能
 
 - **状态管理**：待办分「未完成 / 已完成」两种状态，通过 Issue 的打开/关闭实现，可一键切换。
