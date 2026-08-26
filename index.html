@@ -116,7 +116,8 @@
             <li>点右上角「设置」→「+ 添加仓库」，选择 <b>API 格式</b>（GitHub GraphQL / Gitea REST），填写 <b>仓库 URL</b>（自动识别 owner / 仓库名，Gitea 会同步识别服务器地址）、Token，并勾选该仓库是否<b>支持百分比进度</b>；保存第一个仓库后会自动连接。</li>
             <li>支持 Gitea 官网（gitea.com）或任意自建 Gitea 实例，粘贴仓库 URL 即可。</li>
             <li><b>自建 Gitea 需开启 CORS</b>：在服务器 <code>app.ini</code> 的 <code>[cors]</code> 段设置 <code>ENABLED = true</code>、<code>ALLOW_DOMAIN = *</code>（<code>METHODS</code> 需含 <code>OPTIONS</code>），修改后重启 Gitea；否则浏览器跨域预检（OPTIONS）会被拒绝，表现为「连接失败」。</li>
-            <li>可精确限定来源：<code>ALLOW_DOMAIN = 192.168.1.*, *.example.com</code>（按正则匹配 Origin，支持局域网与子域名）。若预检返回 200 但仍报 CORS error，说明 Origin 未匹配——本地用 <code>localhost</code>/<code>127.0.0.1</code> 打开页面时需把它们加入列表；用 <code>file://</code> 直接打开时 Origin 为 <code>null</code>，需额外加 <code>null</code>（建议改用 HTTP 静态服务打开）。若 Gitea 前有反向代理，需在代理层同步放行 CORS 头。</li>
+            <li>可精确限定来源：<code>ALLOW_DOMAIN = 192.168.1.*, *.example.com</code>（按正则匹配 Origin，支持局域网与子域名）。若预检返回 200 但仍报 CORS error，说明 Origin 未匹配——本地用 <code>localhost</code>/<code>127.0.0.1</code> 打开页面时需把它们加入列表；用 <code>file://</code> 直接打开时 Origin 为 <code>null</code>，需额外加 <code>null</code>（建议改用 HTTP 静态服务打开）；部署在 GitHub Pages（<code>https://用户名.github.io</code>）时需把该域名加入列表。若 Gitea 前有反向代理，需在代理层同步放行 CORS 头。</li>
+            <li><b>页面为 HTTPS 时 Gitea 也必须是 HTTPS</b>：浏览器禁止 HTTPS 页面请求 HTTP 接口（混合内容，报 mixed block）。部署在 GitHub Pages 等 HTTPS 站点时，请为 Gitea 配置 HTTPS 并使用 <code>https://</code> 的服务器地址。</li>
             <li>Token 只保存在浏览器 localStorage 中，请勿在公共/共享设备上使用。</li>
           </ol>
         </div>

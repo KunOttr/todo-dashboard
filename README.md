@@ -2,6 +2,9 @@
 
 一个纯前端、可直接部署到 **GitHub Pages** 的待办管理面板。所有数据都存在你自己的 GitHub 仓库里——每条待办就是一个 **Issue**，通过 **GitHub GraphQL API** 读写，无需后端服务。
 
+<img width="1277" height="574" alt="图片" src="https://github.com/user-attachments/assets/d2ce654a-bd40-443e-a215-3468767a8aaa" />
+
+
 ## 功能
 
 - **状态管理**：待办分「未完成 / 已完成」两种状态，通过 Issue 的打开/关闭实现，可一键切换。
@@ -77,7 +80,8 @@
   ```ini
   ALLOW_DOMAIN = 192.168.1.*, *.example.com
   ```
-  > 排障提示：若预检（OPTIONS）返回 200 但真实请求仍报 CORS error，通常是 Origin 不匹配——预检通过但响应缺少 `Access-Control-Allow-Origin` 头。本地用 `http://localhost:端口` 或 `http://127.0.0.1:端口` 打开面板时，需把 `localhost, 127.0.0.1` 加入列表（`file://` 打开时 Origin 为 `null`，需额外加 `null`）。可在 DevTools → Network 里查看 OPTIONS 请求的 `Origin` 请求头确认。
+  > 排障提示：若预检（OPTIONS）返回 200 但真实请求仍报 CORS error，通常是 Origin 不匹配——预检通过但响应缺少 `Access-Control-Allow-Origin` 头。本地用 `http://localhost:端口` 或 `http://127.0.0.1:端口` 打开面板时，需把 `localhost, 127.0.0.1` 加入列表（`file://` 打开时 Origin 为 `null`，需额外加 `null`；部署在 GitHub Pages 时把 `用户名.github.io` 加入列表）。可在 DevTools → Network 里查看 OPTIONS 请求的 `Origin` 请求头确认。
+  > **HTTPS 要求**：页面是 HTTPS 时，Gitea 也必须是 HTTPS（浏览器会拦截 HTTP 接口，报 mixed block）。GitHub Pages 部署的场景请为 Gitea 配置 HTTPS 并使用 `https://` 服务器地址。
   若 Gitea 前有反向代理（如 nginx），CORS 头可能由代理决定，需在代理层同步放行或透传。
 
 ### 3. 数据模型
