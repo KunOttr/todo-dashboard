@@ -234,6 +234,8 @@ main {
   cursor: pointer; font-size: 13px; padding: 2px;
 }
 .btn-link:hover { text-decoration: underline; }
+.btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
+.btn-danger:hover { background: #b11f28; }
 .danger { color: var(--red); }
 
 /* ========== 模态框 ========== */

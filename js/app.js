@@ -705,8 +705,8 @@ function editorHTML() {
     ? (() => {
         const issue = state.issues.find((i) => i.id === ed.targetId);
         const isArch = issue ? deriveIssueMeta(issue).isArchived : false;
-        // 必须先归档再删除：未归档显示「归档」，已归档显示「删除」
-        return `<button class="btn-link${isArch ? ' danger' : ''}" data-act="editor-archive-delete">${isArch ? '删除' : '归档'}</button>`;
+        // 必须先归档再删除：未归档显示「归档」，已归档显示「删除」；均为红色危险按钮
+        return `<button class="btn btn-danger" data-act="editor-archive-delete">${isArch ? '删除' : '归档'}</button>`;
       })()
     : '';
   return `
