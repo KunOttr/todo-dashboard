@@ -581,8 +581,13 @@ function renderList(el, issues, kind) {
   }
   let html = list.map(cardHTML);
   if (ed) {
-    const showHere = ed.mode === 'new' ? kind === 'open' : edInBlock(ed.targetId, kind);
-    if (showHere) html.unshift(editorHTML());
+    if (ed.mode === 'new') {
+      if (kind === 'open') html.unshift(editorHTML());
+    } else if (edInBlock(ed.targetId, kind)) {
+      // 编辑已有待办：编辑卡片插回原卡片所在位置，而非列表顶部
+      const origIdx = issues.findIndex((i) => i.id === ed.targetId);
+      html.splice(Math.min(origIdx, html.length), 0, editorHTML());
+    }
   }
   if (html.length) {
     el.innerHTML = html.join('');
