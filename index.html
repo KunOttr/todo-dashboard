@@ -123,6 +123,7 @@
             <li>可精确限定来源：<code>ALLOW_DOMAIN = 192.168.1.*, *.example.com</code>（按正则匹配 Origin，支持局域网与子域名）。若预检返回 200 但仍报 CORS error，说明 Origin 未匹配——本地用 <code>localhost</code>/<code>127.0.0.1</code> 打开页面时需把它们加入列表；用 <code>file://</code> 直接打开时 Origin 为 <code>null</code>，需额外加 <code>null</code>（建议改用 HTTP 静态服务打开）；部署在 GitHub Pages（<code>https://用户名.github.io</code>）时需把该域名加入列表。若 Gitea 前有反向代理，需在代理层同步放行 CORS 头。</li>
             <li><b>页面为 HTTPS 时 Gitea 也必须是 HTTPS</b>：浏览器禁止 HTTPS 页面请求 HTTP 接口（混合内容，报 mixed block）。部署在 GitHub Pages 等 HTTPS 站点时，请为 Gitea 配置 HTTPS 并使用 <code>https://</code> 的服务器地址。</li>
             <li>Token 使用 <b>AES-GCM 加密</b>后存在浏览器本地，输入框不回显旧值、编辑留空即保留原 Token；<b>「记住 Token」</b>默认开启（下次打开自动解密），关闭它则关闭浏览器后需重新输入，安全性更高。纯前端方案无法彻底防住本地恶意软件 / 浏览器扩展窃取，请使用权限最小化的令牌并避免在公共设备使用。</li>
+            <li>Token 只保存在浏览器 localStorage 中，请勿在公共/共享设备上使用。</li>
           </ol>
         </div>
         <div class="help-section">
