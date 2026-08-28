@@ -17,7 +17,7 @@
 - **关键词搜索**：按标题 / 描述 / 标签名包含关键词筛选。
 - **多条件并存**：关键词、标签、时间、归档开关之间均为「与」关系，可任意组合。
 - **归档机制**：带「归档」标签的任务默认隐藏，可通过「显示归档」开关查看；在标签筛选中选中「归档」时会联动打开显示开关。
-- **多仓库支持**：设置中可维护多个仓库卡片（只读展示，编辑时展开为输入框），一键切换当前仓库；顶部下拉切换当前仓库（当前项以 ✓ 标记）。支持 **GitHub（GraphQL API）** 与 **Gitea（REST API）**，添加仓库时可选择 API 格式并粘贴自定义仓库 URL（含 Gitea 自建实例）。
+- **多仓库支持**：设置中可维护多个仓库卡片（只读展示，编辑时展开为输入框），一键切换当前仓库；顶部下拉切换当前仓库（当前项以 ✓ 标记）。支持 **GitHub（GraphQL API）** 与 **Gitea（REST API）**，添加仓库时可选择 API 格式并粘贴自定义仓库 URL（含 Gitea 自建实例）。**GitHub 亦支持企业版**：Enterprise Cloud 与公开版共用端点，直接填 `https://github.com/owner/repo` 即可；自建 Enterprise Server 填 `https://<域名>/owner/repo` 即可，面板自动拼接 `/api/graphql` 作为 GraphQL 端点。
 - **防限速自动同步**：所有操作先在本地生效并入队，**距最后一次操作 5 分钟**后自动调用 API 批量保存；「同步」按钮实时显示待同步数量与剩余倒计时，点击立即保存。
 
 ## 使用方式
@@ -55,7 +55,7 @@
 ### 2. 打开页面并连接
 
 1. 打开部署好的站点（或本地直接用浏览器打开 `index.html`）。
-2. 点击右上角「设置」，点「+ 添加仓库」：选择 **API 格式**（GitHub GraphQL / Gitea REST），填写**仓库 URL**（如 `https://github.com/owner/repo` 或 `https://gitea.com/owner/repo`，自动识别 owner / 仓库名，Gitea 同步识别服务器地址）、**Token**，并勾选该仓库是否**支持百分比进度**，可先「测试」再「保存」；保存第一个仓库后会自动连接。
+2. 点击右上角「设置」，点「+ 添加仓库」：选择 **API 格式**（GitHub GraphQL / Gitea REST），填写**仓库 URL**（如 `https://github.com/owner/repo` 或 `https://gitea.com/owner/repo`，自动识别 owner / 仓库名，Gitea 同步识别服务器地址；**自建 GitHub Enterprise Server** 填 `https://<域名>/owner/repo` 即可，面板自动拼接 `/api/graphql` 作为 GraphQL 端点）、**Token**，并勾选该仓库是否**支持百分比进度**，可先「测试」再「保存」；保存第一个仓库后会自动连接。
 3. 首次连接会自动在仓库中创建系统标签：`归档`；该仓库开启「支持百分比进度」后自动创建 `进度:0%` ~ `进度:100%`。
 4. 之后即可新建待办、切换完成状态、调整百分比、打标签、归档、删除。操作会先在本地生效，5 分钟（或点操作面板里的「同步」）后批量保存到 GitHub。
 
@@ -76,6 +76,14 @@
 设置页中 Token 输入框**不会回显已保存值**：编辑已有仓库时留空 Token 即保持不变，点击输入框会清空以便直接粘贴新值。
 
 > Token 不会写入代码、不会上传到任何服务器，始终只存在于你自己的浏览器存储中。请使用权限最小化的令牌，并妥善保管。
+
+### GitHub Enterprise 说明
+
+- **Enterprise Cloud**（云企业版）：与公开版共用 GraphQL 端点（`api.github.com/graphql`），仓库 URL 直接填 `https://github.com/owner/repo` 即可，Token 使用企业账号在 GitHub 生成的 fine-grained PAT 或经典 PAT（权限要求同上文）。
+- **自建 Enterprise Server**（GHES）：仓库 URL 填 `https://<你的域名>/owner/repo`，面板会自动把 GraphQL 端点识别为 `https://<你的域名>/api/graphql`；也可在仓库表单的「服务器地址」输入框手填 GHE 域名。
+- Token 使用 GHES 管理员在服务器上创建的 personal access token，需具备目标仓库 Issues / Labels 的读写权限。
+- **HTTPS 要求**：页面是 HTTPS 时，GHE 也必须是 HTTPS（浏览器会拦截 HTTP 接口，报 mixed block）；GHES 需配置 HTTPS 证书。
+- 若 GHES 前面有反向代理（如 nginx），请确保代理正确透传 `/api/graphql` 路径且放行 CORS（GraphQL 为 POST + 自定义 `Authorization` 头，会触发预检）。
 
 ### Gitea 说明
 
@@ -109,7 +117,7 @@
 | 百分比支持标记 | 标签 `进度:X%`（0% 也是支持标记），10% 步进 |
 | 标签 | 普通 Issue 标签 |
 | 归档 | 特殊标签 `归档`（系统保留，不可删除） |
-| 多仓库 | localStorage 中维护 `{repos[], activeIndex, rememberToken}` 列表，每个仓库独立记录 `useProgress`；Token 字段以 AES-GCM 密文保存 |
+| 多仓库 | localStorage 中维护 `{repos[], activeIndex, rememberToken}` 列表，每个仓库独立记录 `useProgress`；Token 字段以 AES-GCM 密文保存；GitHub / Gitea 仓库均可带 `baseUrl`（Gitea 与自建 GHE 必填，公开版 GitHub 为空） |
 
 > 关闭某仓库的「支持百分比进度」时（编辑当前活动仓库）会弹窗提示：该仓库进行中待办将回退为未完成状态并丢失完成进度；确认后批量移除所有百分比标签。
 

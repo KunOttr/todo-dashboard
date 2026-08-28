@@ -118,10 +118,11 @@
           <ol>
             <li>准备 Personal Access Token：fine-grained PAT 仓库访问选目标仓库、<code>Issues</code> 权限设为 <b>Read and write</b>（<code>Metadata: Read</code> 自动附带）；经典 PAT 私有仓库用 <code>repo</code>、公开仓库用 <code>public_repo</code>。Gitea 仓库用 Gitea 的 Access Token（需仓库读写权限）。</li>
             <li>点右上角「设置」→「+ 添加仓库」，选择 <b>API 格式</b>（GitHub GraphQL / Gitea REST），填写 <b>仓库 URL</b>（自动识别 owner / 仓库名，Gitea 会同步识别服务器地址）、Token，并勾选该仓库是否<b>支持百分比进度</b>；保存第一个仓库后会自动连接。</li>
+            <li><b>GitHub Enterprise</b>：支持 <b>Enterprise Cloud</b>（与公开版共用 <code>api.github.com</code>，直接填 <code>https://github.com/owner/repo</code> 即可）与 <b>自建 Enterprise Server</b>（填 <code>https://你的域名/owner/repo</code>，面板会自动拼接 <code>/api/graphql</code> 作为 GraphQL 端点；也可在「服务器地址」输入框里手填 GHE 域名）。</li>
             <li>支持 Gitea 官网（gitea.com）或任意自建 Gitea 实例，粘贴仓库 URL 即可。</li>
             <li><b>自建 Gitea 需开启 CORS</b>：在服务器 <code>app.ini</code> 的 <code>[cors]</code> 段设置 <code>ENABLED = true</code>、<code>ALLOW_DOMAIN = *</code>（<code>METHODS</code> 需含 <code>OPTIONS</code>），修改后重启 Gitea；否则浏览器跨域预检（OPTIONS）会被拒绝，表现为「连接失败」。</li>
             <li>可精确限定来源：<code>ALLOW_DOMAIN = 192.168.1.*, *.example.com</code>（按正则匹配 Origin，支持局域网与子域名）。若预检返回 200 但仍报 CORS error，说明 Origin 未匹配——本地用 <code>localhost</code>/<code>127.0.0.1</code> 打开页面时需把它们加入列表；用 <code>file://</code> 直接打开时 Origin 为 <code>null</code>，需额外加 <code>null</code>（建议改用 HTTP 静态服务打开）；部署在 GitHub Pages（<code>https://用户名.github.io</code>）时需把该域名加入列表。若 Gitea 前有反向代理，需在代理层同步放行 CORS 头。</li>
-            <li><b>页面为 HTTPS 时 Gitea 也必须是 HTTPS</b>：浏览器禁止 HTTPS 页面请求 HTTP 接口（混合内容，报 mixed block）。部署在 GitHub Pages 等 HTTPS 站点时，请为 Gitea 配置 HTTPS 并使用 <code>https://</code> 的服务器地址。</li>
+            <li><b>页面为 HTTPS 时 Gitea / 自建 GHE 也必须是 HTTPS</b>：浏览器禁止 HTTPS 页面请求 HTTP 接口（混合内容，报 mixed block）。部署在 GitHub Pages 等 HTTPS 站点时，请为 Gitea / GHE 配置 HTTPS 并使用 <code>https://</code> 的服务器地址。</li>
             <li>Token 使用 <b>AES-GCM 加密</b>后存在浏览器本地，输入框不回显旧值、编辑留空即保留原 Token；<b>「记住 Token」</b>默认开启（下次打开自动解密），关闭它则关闭浏览器后需重新输入，安全性更高。纯前端方案无法彻底防住本地恶意软件 / 浏览器扩展窃取，请使用权限最小化的令牌并避免在公共设备使用。</li>
             <li>Token 只保存在浏览器 localStorage 中，请勿在公共/共享设备上使用。</li>
           </ol>
@@ -164,7 +165,7 @@
           <h4>多仓库</h4>
           <ul>
             <li>设置中可添加 / 编辑 / 删除多个仓库；顶部下拉切换当前仓库（当前项带 ✓ 标记）。</li>
-            <li>每个仓库可选择 API 格式（<b>GitHub GraphQL</b> 或 <b>Gitea REST</b>），支持粘贴自定义仓库 URL（如 Gitea 自建实例）；各仓库独立配置 Token 与是否支持百分比。</li>
+            <li>每个仓库可选择 API 格式（<b>GitHub GraphQL</b> 或 <b>Gitea REST</b>），支持粘贴自定义仓库 URL（如 Gitea 自建实例、自建 GitHub Enterprise）；各仓库独立配置 Token 与是否支持百分比。</li>
           </ul>
         </div>
         <div class="help-section">

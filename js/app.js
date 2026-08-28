@@ -143,11 +143,19 @@ function currentRepoConfig() {
   return repos[state.config.activeIndex] || repos[0];
 }
 
-/* 从仓库 URL 解析 owner/repo 与 gitea 服务器地址 */
+/* 从仓库 URL 解析 owner/repo 与服务器地址（gitea / github enterprise） */
 function parseRepoUrl(url) {
   const m = String(url || '').trim().match(/^(https?:\/\/[^/]+)\/([^/]+)\/([^/]+?)\/?$/);
   if (!m) return null;
   return { baseUrl: m[1].replace(/\/+$/, ''), owner: m[2], repo: m[3] };
+}
+
+/* GitHub 的 baseUrl 规范化：公开版 github.com（含 Enterprise Cloud）视为未填，自建 GHE 才保留 */
+function normalizeGithubBase(base) {
+  const b = String(base || '').trim().replace(/\/+$/, '');
+  if (!b) return null;
+  if (/^(https?:)?\/\/github\.com$/i.test(b)) return null;
+  return b;
 }
 
 /* ---------------- 提示 / 加载 ---------------- */
@@ -512,9 +520,8 @@ function renderRepoInfo() {
   const menu = $('#repoSwitchMenu');
   menu.innerHTML = repos.map((r, idx) => {
     const active = idx === state.config.activeIndex;
-    const prov = r.provider === 'gitea'
-      ? 'Gitea' + (r.baseUrl ? ' · ' + r.baseUrl.replace(/^https?:\/\//, '') : '')
-      : 'GitHub';
+    const prov = (r.provider === 'gitea' ? 'Gitea' : 'GitHub')
+      + (r.baseUrl ? ' · ' + r.baseUrl.replace(/^https?:\/\//, '') : '');
     return `<button type="button" class="repo-switch-item${active ? ' active' : ''}" data-switch-repo="${idx}">
       <span class="repo-switch-check">${active ? '✓' : ''}</span>
       <span class="repo-switch-name">${escapeHTML(r.owner)} / ${escapeHTML(r.repo)}</span>
@@ -1049,7 +1056,7 @@ function renderRepoCards() {
         <span class="sys-badge">${providerName}</span>
         ${active ? '<span class="sys-badge">当前</span>' : ''}
       </div>
-      <div class="repo-meta">Token: ${tokenState} · 百分比: ${r.useProgress ? '开启' : '关闭'}${r.provider === 'gitea' ? ' · ' + escapeHTML(r.baseUrl || '') : ''}</div>
+      <div class="repo-meta">Token: ${tokenState} · 百分比: ${r.useProgress ? '开启' : '关闭'}${r.baseUrl ? ' · ' + escapeHTML(r.baseUrl.replace(/^https?:\/\//, '')) : ''}</div>
       <div class="repo-actions">
         ${active ? '' : `<button type="button" class="btn" data-repo-connect="${idx}">连接</button>`}
         <button type="button" class="btn" data-repo-edit="${idx}">编辑</button>
@@ -1068,7 +1075,9 @@ function repoEditCardHTML(idx, r) {
   const prov = r.provider || 'github';
   const isGitea = prov === 'gitea';
   const urlVal = r.url
-    || (isGitea ? (r.baseUrl || '') + '/' + r.owner + '/' + r.repo : 'https://github.com/' + r.owner + '/' + r.repo);
+    || (r.baseUrl
+      ? r.baseUrl + '/' + r.owner + '/' + r.repo
+      : (isGitea ? '/' + r.owner + '/' + r.repo : 'https://github.com/' + r.owner + '/' + r.repo));
   return `<div class="repo-card repo-edit-card">
     <label>API 格式
       <select data-repo-field="provider">
@@ -1085,8 +1094,8 @@ function repoEditCardHTML(idx, r) {
     <label>仓库名
       <input type="text" data-repo-field="repo" value="${escapeHTML(r.repo)}" placeholder="my-todo">
     </label>
-    <label class="gitea-only${isGitea ? '' : ' hidden'}">Gitea 服务器地址（从 URL 自动识别）
-      <input type="text" data-repo-field="baseUrl" value="${escapeHTML(r.baseUrl || '')}" placeholder="https://gitea.com">
+    <label class="baseurl-field">${isGitea ? 'Gitea 服务器地址（从 URL 自动识别）' : 'GitHub Enterprise 服务器地址（可选，留空用公开版）'}
+      <input type="text" data-repo-field="baseUrl" value="${escapeHTML(r.baseUrl || '')}" placeholder="${isGitea ? 'https://gitea.com' : 'https://ghe.example.com'}">
     </label>
     <label>Personal Access Token
       <input type="password" data-repo-field="token" autocomplete="off" value=""
@@ -1117,9 +1126,11 @@ function readRepoForm(card) {
     if (!parsed) return { error: '仓库 URL 格式不正确，应为 https://主机/owner/仓库' };
     owner = parsed.owner;
     repo = parsed.repo;
-    baseUrl = provider === 'gitea' ? parsed.baseUrl : null;
+    baseUrl = provider === 'gitea' ? parsed.baseUrl : normalizeGithubBase(parsed.baseUrl);
   } else if (provider === 'gitea') {
     baseUrl = card.querySelector('[data-repo-field="baseUrl"]').value.trim();
+  } else {
+    baseUrl = normalizeGithubBase(card.querySelector('[data-repo-field="baseUrl"]').value.trim());
   }
   if (!owner || !repo) return { error: '请填写完整信息' };
   if (provider === 'gitea' && !baseUrl) return { error: '请填写 Gitea 服务器地址或仓库 URL' };
@@ -1500,7 +1511,7 @@ function bindEvents() {
     else if (cancel) { state.repoCardEdit = null; renderRepoCards(); }
     else if (test) testRepo();
   });
-  // 仓库表单：切换 API 格式时显示/隐藏 Gitea 服务器地址
+  // 仓库表单：切换 API 格式时更新 URL/服务器地址占位符
   $('#repoCards').addEventListener('change', (e) => {
     const el = e.target.closest('[data-repo-field="provider"]');
     if (!el) return;
@@ -1508,11 +1519,18 @@ function bindEvents() {
     if (!card) return;
     const gitea = el.value === 'gitea';
     const urlInput = card.querySelector('[data-repo-field="url"]');
-    const baseLabel = card.querySelector('.gitea-only');
-    if (baseLabel) baseLabel.classList.toggle('hidden', !gitea);
+    const baseLabel = card.querySelector('.baseurl-field');
     if (urlInput) urlInput.placeholder = gitea
       ? 'https://gitea.com/owner/repo'
-      : 'https://github.com/owner/repo';
+      : 'https://github.com/owner/repo 或 https://ghe.example.com/owner/repo';
+    if (baseLabel) {
+      const labelText = baseLabel.firstChild;
+      if (labelText) labelText.nodeValue = gitea
+        ? 'Gitea 服务器地址（从 URL 自动识别）'
+        : 'GitHub Enterprise 服务器地址（可选，留空用公开版）';
+      const input = baseLabel.querySelector('[data-repo-field="baseUrl"]');
+      if (input) input.placeholder = gitea ? 'https://gitea.com' : 'https://ghe.example.com';
+    }
   });
   // 仓库表单：输入 URL 时自动填充 owner/repo/baseUrl
   $('#repoCards').addEventListener('input', (e) => {
@@ -1526,7 +1544,7 @@ function bindEvents() {
     card.querySelector('[data-repo-field="repo"]').value = parsed.repo;
     const prov = card.querySelector('[data-repo-field="provider"]').value;
     const baseInput = card.querySelector('[data-repo-field="baseUrl"]');
-    if (prov === 'gitea' && baseInput) baseInput.value = parsed.baseUrl;
+    if (baseInput) baseInput.value = prov === 'gitea' ? parsed.baseUrl : normalizeGithubBase(parsed.baseUrl) || '';
   });
 }
 
