@@ -720,9 +720,10 @@ function editorHTML() {
         ${useProgress ? `<label class="editor-inline"><input type="checkbox" id="editorPercent"${ed.percent ? ' checked' : ''}> 支持百分比</label>` : ''}
       </div>
       ${ed.percent ? `<div class="editor-progress"><span>进度</span>
-        <div class="progress-11">${[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((v) =>
-          `<button type="button" class="p11${v === ed.progress ? ' on' : ''}" data-editor-progress="${v}">${v}%</button>`
-        ).join('')}</div>
+        <div class="progress-field">
+          <input type="range" id="editorProgress" min="0" max="100" step="10" value="${ed.progress}">
+          <span id="editorProgressLabel">${ed.progress}%</span>
+        </div>
       </div>` : ''}
     </div>
     <div class="card-actions">
@@ -795,7 +796,7 @@ function saveEditor() {
   toast('已保存（待自动同步）');
 }
 
-/* ---------------- 进度圆环 / 11 格选择 ---------------- */
+/* ---------------- 进度圆环 / 滑动选择 ---------------- */
 
 function openProgressPopover(issueId, anchor) {
   const issue = state.issues.find((i) => i.id === issueId);
@@ -803,9 +804,11 @@ function openProgressPopover(issueId, anchor) {
   const meta = deriveIssueMeta(issue);
   if (!meta.percent || !(currentRepoConfig() && currentRepoConfig().useProgress)) return;
   const grid = $('#progressPopoverGrid');
-  grid.innerHTML = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((v) =>
-    `<button type="button" class="p11${v === meta.progress ? ' on' : ''}" data-progress-opt="${v}">${v}%</button>`
-  ).join('');
+  grid.innerHTML = `
+    <div class="progress-field">
+      <input type="range" id="popProgress" min="0" max="100" step="10" value="${meta.progress}">
+      <span id="popProgressLabel">${meta.progress}%</span>
+    </div>`;
   const pop = $('#progressPopover');
   const rect = anchor.getBoundingClientRect();
   pop.style.left = Math.min(rect.left, window.innerWidth - 250) + 'px';
@@ -1356,6 +1359,11 @@ function bindEvents() {
     if (!ed) return;
     if (e.target.id === 'editorTitle') ed.title = e.target.value;
     else if (e.target.id === 'editorBody') ed.body = e.target.value;
+    else if (e.target.id === 'editorProgress') {
+      ed.progress = parseInt(e.target.value, 10);
+      const label = document.getElementById('editorProgressLabel');
+      if (label) label.textContent = ed.progress + '%';
+    }
   });
 
   $('#main').addEventListener('change', (e) => {
@@ -1408,12 +1416,6 @@ function bindEvents() {
       render();
       return;
     }
-    // 编辑器进度选择
-    const edP = e.target.closest('[data-editor-progress]');
-    if (edP) {
-      if (state.editor) { state.editor.progress = parseInt(edP.dataset.editorProgress, 10); render(); }
-      return;
-    }
     // 进度圆环
     const ring = e.target.closest('[data-ring]');
     if (ring) {
@@ -1430,13 +1432,18 @@ function bindEvents() {
     onCardAction(card.dataset.id, btn.dataset.act);
   });
 
-  // 11 格进度弹层
-  $('#progressPopover').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-progress-opt]');
-    if (!b) return;
+  // 进度弹层：滑动条实时更新数值
+  $('#progressPopover').addEventListener('input', (e) => {
+    if (e.target.id !== 'popProgress') return;
+    const label = document.getElementById('popProgressLabel');
+    if (label) label.textContent = e.target.value + '%';
+  });
+  // 进度弹层：松开滑块确认并应用
+  $('#progressPopover').addEventListener('change', (e) => {
+    if (e.target.id !== 'popProgress') return;
     const issue = state.issues.find((i) => i.id === state.progressPopoverFor);
     if (issue) {
-      optimisticSetProgress(issue, parseInt(b.dataset.progressOpt, 10));
+      optimisticSetProgress(issue, parseInt(e.target.value, 10));
       render();
       toast('进度已更新（待自动同步）');
     }

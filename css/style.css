@@ -386,20 +386,13 @@ main {
 .ring-full { stroke: #0f5a24; }
 .ring-text { font-size: 8.5px; font-weight: 600; fill: var(--text-muted); }
 
-/* ========== 11 格进度选择弹层 ========== */
+/* ========== 进度滑动选择弹层 ========== */
 .progress-popover {
   position: fixed; z-index: 45; background: #fff; border: 1px solid var(--border);
-  border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.14); padding: 8px;
+  border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.14); padding: 12px;
   width: 240px;
 }
 .progress-popover.hidden { display: none; }
-.progress-popover-grid { display: grid; grid-template-columns: repeat(11, 1fr); gap: 3px; }
-.p11 {
-  border: 1px solid var(--border); background: #fff; border-radius: 5px;
-  font-size: 10px; padding: 6px 0; cursor: pointer; color: var(--text-muted);
-}
-.p11:hover { background: #f3f4f6; }
-.p11.on { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
 
 /* ========== 内联编辑卡片 ========== */
 .editor-card { background: #fffbe8 !important; border-color: #f0d98a; }
@@ -419,8 +412,6 @@ main {
 .tag-x:hover { color: var(--red); }
 .editor-progress { margin-top: 12px; }
 .editor-progress > span { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px; }
-.progress-11 { display: flex; flex-wrap: wrap; gap: 4px; }
-.progress-11 .p11 { flex: 1 0 60px; }
 
 /* ========== 设置：多仓库卡片 ========== */
 .modal-lg { max-width: 640px; }
