@@ -3,10 +3,24 @@
 
 /* ---------------- 基础 HTTP ---------------- */
 
+/* 计算 GitHub GraphQL 端点：自建 Enterprise 用 baseUrl + /api/graphql，否则用默认（公开版 / Enterprise Cloud 共用 api.github.com） */
+function githubGraphqlEndpoint(config) {
+  const base = (config.baseUrl || '').replace(/\/+$/, '');
+  if (!base) return APP_CONFIG.GRAPHQL_ENDPOINT;
+  // 填的其实是公开版 github.com（含 Enterprise Cloud），回退默认端点
+  if (/^(https?:)?\/\/github\.com$/i.test(base)) return APP_CONFIG.GRAPHQL_ENDPOINT;
+  return base + '/api/graphql';
+}
+
 async function gql(config, query, variables) {
+  const endpoint = githubGraphqlEndpoint(config);
+  // HTTPS 页面请求 HTTP 接口会被浏览器拦截（混合内容）
+  if (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && endpoint.indexOf('http://') === 0) {
+    throw new Error('连接失败：当前页面为 HTTPS，但 GitHub Enterprise 地址是 HTTP，浏览器会拦截混合内容。请为 GHE 配置 HTTPS，并使用 https:// 的服务器地址。');
+  }
   let res;
   try {
-    res = await fetch(APP_CONFIG.GRAPHQL_ENDPOINT, {
+    res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
