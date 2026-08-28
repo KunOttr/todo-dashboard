@@ -92,7 +92,11 @@
       <div class="section-title">仓库（多仓库支持，连接当前选中的仓库）</div>
       <div id="repoCards"></div>
       <button id="btnAddRepo" class="btn">+ 添加仓库</button>
+      <label class="checkbox-line">
+        <input type="checkbox" id="rememberTokenToggle"> 记住 Token（勾选后本设备下次打开自动解密；取消勾选则关闭浏览器后需重新输入，安全性更高）
+      </label>
       <p class="modal-note">每个仓库可独立选择是否支持百分比进度；关闭时该仓库进行中的待办将回退为未完成状态并丢失完成进度。</p>
+      <p class="modal-note">Token 使用 AES-GCM 加密后存储在浏览器本地，输入框不回显已保存值；编辑仓库时留空 Token 即保持不变。建议使用权限最小化的令牌，勿在公共/共享设备上使用。</p>
       <div id="setupMsg"></div>
       <div class="modal-actions">
         <button id="setupClose" class="btn btn-primary">关闭</button>
@@ -118,6 +122,7 @@
             <li><b>自建 Gitea 需开启 CORS</b>：在服务器 <code>app.ini</code> 的 <code>[cors]</code> 段设置 <code>ENABLED = true</code>、<code>ALLOW_DOMAIN = *</code>（<code>METHODS</code> 需含 <code>OPTIONS</code>），修改后重启 Gitea；否则浏览器跨域预检（OPTIONS）会被拒绝，表现为「连接失败」。</li>
             <li>可精确限定来源：<code>ALLOW_DOMAIN = 192.168.1.*, *.example.com</code>（按正则匹配 Origin，支持局域网与子域名）。若预检返回 200 但仍报 CORS error，说明 Origin 未匹配——本地用 <code>localhost</code>/<code>127.0.0.1</code> 打开页面时需把它们加入列表；用 <code>file://</code> 直接打开时 Origin 为 <code>null</code>，需额外加 <code>null</code>（建议改用 HTTP 静态服务打开）；部署在 GitHub Pages（<code>https://用户名.github.io</code>）时需把该域名加入列表。若 Gitea 前有反向代理，需在代理层同步放行 CORS 头。</li>
             <li><b>页面为 HTTPS 时 Gitea 也必须是 HTTPS</b>：浏览器禁止 HTTPS 页面请求 HTTP 接口（混合内容，报 mixed block）。部署在 GitHub Pages 等 HTTPS 站点时，请为 Gitea 配置 HTTPS 并使用 <code>https://</code> 的服务器地址。</li>
+            <li>Token 使用 <b>AES-GCM 加密</b>后存在浏览器本地，输入框不回显旧值、编辑留空即保留原 Token；<b>「记住 Token」</b>默认开启（下次打开自动解密），关闭它则关闭浏览器后需重新输入，安全性更高。纯前端方案无法彻底防住本地恶意软件 / 浏览器扩展窃取，请使用权限最小化的令牌并避免在公共设备使用。</li>
             <li>Token 只保存在浏览器 localStorage 中，请勿在公共/共享设备上使用。</li>
           </ol>
         </div>
@@ -180,7 +185,9 @@
         </div>
         <div class="help-section">
           <h4>部署到 GitHub Pages</h4>
-          <p>纯静态站点，无构建步骤：推送后启用 <b>Settings → Pages → Deploy from a branch</b>（main / root），或使用仓库自带的 GitHub Actions 工作流（推送到 main / master 或手动触发）。</p>
+          <p>生产构建：仓库自带 <b>esbuild</b> 合并压缩流水线。<code>npm install</code> 后执行 <code>npm run build</code>，生成 <code>dist/</code>（<code>index.html</code> + 带内容 hash 的 <code>style.min.*.css</code> / <code>app.min.*.js</code>，共 3 个文件）。<b>部署单元是 <code>dist/</code>，源码不直接上线。</b></p>
+          <p>部署方式任选其一（<b>不强制使用 workflow</b>）：<b>方式 A（推荐）</b>——手动 <code>npm run build</code> 后提交 <code>dist/</code>，在 <b>Settings → Pages → Deploy from a branch</b> 指向 <code>/dist</code> 目录；<b>方式 B（可选示例）</b>——把 <code>.github/workflows/pages.example.yml</code> <b>重命名为 <code>pages.yml</code></b> 并推送，Actions 会自动 <code>npm ci</code> → <code>npm run build</code> → 上传 <code>dist/</code> 发布。页面地址为 <code>https://&lt;用户名&gt;.github.io/&lt;仓库名&gt;/</code>。</p>
+          <p>如需本地预览：<code>npm run serve</code>（构建后用静态服务器打开 <code>dist/</code>）。</p>
         </div>
       </div>
       <div class="modal-actions">
@@ -216,6 +223,7 @@
   <noscript><p style="text-align:center;padding:40px">本应用需要启用 JavaScript。</p></noscript>
 
   <script src="js/config.js"></script>
+  <script src="js/crypto.js"></script>
   <script src="js/api.js"></script>
   <script src="js/filters.js"></script>
   <script src="js/app.js"></script>

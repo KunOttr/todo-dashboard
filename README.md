@@ -59,7 +59,23 @@
 3. 首次连接会自动在仓库中创建系统标签：`归档`；该仓库开启「支持百分比进度」后自动创建 `进度:0%` ~ `进度:100%`。
 4. 之后即可新建待办、切换完成状态、调整百分比、打标签、归档、删除。操作会先在本地生效，5 分钟（或点操作面板里的「同步」）后批量保存到 GitHub。
 
-> Token 只保存在**你的浏览器 localStorage** 中，不会写入代码或上传到别处。请使用权限最小化的令牌，并妥善保管。
+### 3. Token 安全说明（请务必阅读）
+
+本应用是**纯前端**方案，Token 不可避免要留在你的浏览器里，**无法做到**与传统后端代理（Token 只存服务器、前端永不知晓）同等的安全性。以下是当前实现的保障与边界：
+
+> **加密存储**：Token 以 **AES-GCM 加密**后写入浏览器 `localStorage`，**不再明文落盘**；加密密钥默认只存放在 `sessionStorage`（标签页会话级，**关闭浏览器即失效**）。会话密钥丢失后旧密文无法解密，需在设置页重新输入各仓库 Token。
+>
+> **「记住 Token」选项**：设置页默认勾选。勾选时加密密钥会一并持久化到本设备，下次打开自动解密、无需重输；但此时密钥与密文同处浏览器存储，防护对象是「明文不被直接读取」，**防不住**能读取浏览器存储的恶意浏览器扩展 / 本地木马。
+>
+> **最高安全配置**：在设置页**取消勾选「记住 Token」**，关闭浏览器后密钥即销毁，重开需重新输入——适合共用电脑等高危场景。即使不勾选，也请在闲置时关闭浏览器标签页。
+>
+> **仍然无法防御**：能注入页面脚本的 XSS、恶意浏览器扩展、被攻陷的浏览器环境等，都可能拿到解密所需的密钥。请务必使用**权限最小化**的 Token（只授权目标仓库，见上文权限表）、尽量用**专用仓库**，并**避免在公共 / 共享设备**上使用本站点。
+>
+> **HTTPS 前提**：加密依赖浏览器 WebCrypto API，仅在 **HTTPS 或 localhost** 环境下可用；若以 `file://` 或裸 HTTP 打开，将退化为明文存储并在控制台打印警告。建议始终通过 HTTPS 部署访问。
+
+设置页中 Token 输入框**不会回显已保存值**：编辑已有仓库时留空 Token 即保持不变，点击输入框会清空以便直接粘贴新值。
+
+> Token 不会写入代码、不会上传到任何服务器，始终只存在于你自己的浏览器存储中。请使用权限最小化的令牌，并妥善保管。
 
 ### Gitea 说明
 
@@ -84,7 +100,7 @@
   > **HTTPS 要求**：页面是 HTTPS 时，Gitea 也必须是 HTTPS（浏览器会拦截 HTTP 接口，报 mixed block）。GitHub Pages 部署的场景请为 Gitea 配置 HTTPS 并使用 `https://` 服务器地址。
   若 Gitea 前有反向代理（如 nginx），CORS 头可能由代理决定，需在代理层同步放行或透传。
 
-### 3. 数据模型
+### 4. 数据模型
 
 | 待办概念 | 实现方式 |
 | --- | --- |
@@ -93,32 +109,45 @@
 | 百分比支持标记 | 标签 `进度:X%`（0% 也是支持标记），10% 步进 |
 | 标签 | 普通 Issue 标签 |
 | 归档 | 特殊标签 `归档`（系统保留，不可删除） |
-| 多仓库 | localStorage 中维护 `{repos[], activeIndex}` 列表，每个仓库独立记录 `useProgress` |
+| 多仓库 | localStorage 中维护 `{repos[], activeIndex, rememberToken}` 列表，每个仓库独立记录 `useProgress`；Token 字段以 AES-GCM 密文保存 |
 
 > 关闭某仓库的「支持百分比进度」时（编辑当前活动仓库）会弹窗提示：该仓库进行中待办将回退为未完成状态并丢失完成进度；确认后批量移除所有百分比标签。
 
-## 部署到 GitHub Pages
+## 构建与部署
 
-本项目是纯静态站点，无构建步骤。两种方式任选：
+本项目采用 **esbuild 合并压缩** 的生产级打包：源码（4 个 JS + CSS）在构建期合并为 `dist/` 下的 3 个带内容 hash 的文件，**部署单元是 `dist/`，源码不直接上线**。
 
-### 方式 A：从分支部署（最简单）
+### 本地构建 / 预览
 
-1. 把整个目录推送到你的 GitHub 仓库（`main` 分支）。
-2. 仓库 **Settings → Pages → Source** 选择 **Deploy from a branch**，分支选 `main`，目录选 `/ (root)`，保存。
-3. 稍等片刻，页面会在 `https://<用户名>.github.io/<仓库名>/` 上线。
+```bash
+npm install        # 安装 esbuild（写入 package-lock.json，需提交以支持 CI 的 npm ci）
+npm run build      # 产出 dist/（index.html + style.min.<hash>.css + app.min.<hash>.js）
+npm test           # 跑 3 个测试套件（集成 / GitHub API / Gitea API）
+npm run serve      # 构建后用静态服务器本地预览 dist/
+```
 
-### 方式 B：GitHub Actions 部署
+> 改完功能/交互后，记得同步更新 `index.html` 中 `#helpModal` 的帮助文档，并重新 `npm run build` 再部署。
 
-仓库内已附带 `.github/workflows/pages.yml`：
+### 部署到 GitHub Pages
 
-1. 推送后，仓库 **Settings → Pages → Source** 选择 **GitHub Actions**。
-2. 工作流在以下时机被触发并自动重新部署：
-   - **代码 push 到 `main` 或 `master` 分支**（含本地 commit 推送、PR 合并进主分支）；
-   - **手动触发**：仓库 **Actions** 页 → 选中 `Deploy to GitHub Pages` 工作流 → `Run workflow`。
-   - 其余分支的推送、PR 的打开/评论等均**不会**触发。
-3. 页面地址同样为 `https://<用户名>.github.io/<仓库名>/`。
+#### 方式 A：从分支直接部署（推荐，零依赖）
 
-> 注意：方式 A 与方式 B 二选一。方式 A（从分支部署）不使用 Actions、也没有 workflow 运行记录；方式 B 则依赖上述触发时机，两者不冲突但建议只保留一种。
+1. 手动 `npm run build`，确认 `dist/` 已生成（`index.html` + 带内容 hash 的 `style.min.*.css` / `app.min.*.js`，共 3 个文件）。
+2. 提交 `dist/` 目录（`dist/` 默认在 `.gitignore` 中，需 `git add -f dist/` 强制提交），并推送到 `main` / `master`。
+3. 仓库 **Settings → Pages → Source** 选择 **Deploy from a branch**，指向含 `dist/` 的分支与 `/dist` 目录。
+4. 页面地址为 `https://<用户名>.github.io/<仓库名>/`。
+
+> 注意：必须「先构建后提交」，改动源码后要重新 `npm run build` 再提交 `dist/`，否则上线的会是旧产物。
+
+#### 方式 B：Actions 自动构建（可选示例）
+
+仓库提供了 `.github/workflows/pages.example.yml` 作为 **Actions 自动构建** 的示例模板：逻辑为 `npm ci` → `npm run build` → 上传 `dist/` → 发布。它默认**不启用**（`.example.yml` 后缀不会被 GitHub 识别），需要时把该文件**重命名为 `pages.yml`** 再推送，工作流即可自动触发。
+
+1. 重命名：`.github/workflows/pages.example.yml` → `.github/workflows/pages.yml`，推送代码到 `main` / `master`。
+2. 仓库 **Settings → Pages → Source** 选择 **GitHub Actions**。
+3. 工作流自动触发并发布；也可在 **Actions** 页手动 `Run workflow`。
+
+> 该方式让**源码与产物解耦**，杜绝「改了源码却忘了重新构建」导致上线旧代码的风险；`dist/` 与 `node_modules/` 已在 `.gitignore` 中（无需提交），但 `package-lock.json` 必须提交以确保 `npm ci` 可复现。**两种方式任选其一，不强制使用 workflow**；如不熟悉 Actions，推荐用方式 A。
 
 ## 筛选逻辑说明
 
@@ -130,6 +159,6 @@
 ## 已知限制
 
 - GitHub GraphQL API 有速率限制（取决于令牌类型），任务量极大时注意配额。
-- Token 存于浏览器本地，请勿在公共/共享设备上使用该站点。
+- Token 以 AES-GCM 加密存于浏览器本地；未勾选「记住 Token」时关闭浏览器后需重新输入，请勿在公共/共享设备上使用该站点。
 - 若令牌缺少创建标签的权限，自动创建系统标签会失败，进度和归档功能将不可用，需到仓库手动创建或调整权限。
 - 操作为**本地优先 + 延迟同步**：在 5 分钟自动保存之前关闭页面可能丢失未同步的修改，建议通过右上角「同步」按钮主动保存，或留意按钮上的待同步倒计时。
