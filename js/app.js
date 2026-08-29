@@ -634,6 +634,7 @@ function cardHTML(issue) {
       </div>
     </div>
     <div class="card-actions">
+      <button class="btn-link" data-act="tags" title="直接添加标签">+ 标签</button>
       <button class="btn-link" data-act="edit">编辑</button>
     </div>
   </article>`;
