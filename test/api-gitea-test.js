@@ -83,11 +83,12 @@ assert(basics.state === 'OPEN' && basics.labels.length === 1, 'apiGetIssueBasics
 const created = await apiCreateIssue(cfg, null, { title: '新任务', body: '描述', labelIds: ['1'] });
 assert(created.id === '4' && created.title === '新任务', 'apiCreateIssue 返回内部结构');
 const createReq = requests.filter(r => r.method === 'POST' && r.url.indexOf('/api/v1/repos/o/r/issues') >= 0 && r.url.indexOf('/labels') < 0)[0];
-assert(createReq.body.labels.join() === '1', 'createIssue 提交 label ids');
+assert(createReq.body.labels[0] === 1 && typeof createReq.body.labels[0] === 'number', 'createIssue 提交 label ids（数字）');
 
 requests.length = 0;
 await apiAddLabels(cfg, '1', ['1', '2']);
-assert(requests.some(r => r.method === 'POST' && r.url.indexOf('/issues/1/labels') >= 0 && r.body.labels.join() === '1,2'), 'apiAddLabels 提交 label ids');
+const addLabelsReq = requests.find(r => r.method === 'POST' && r.url.indexOf('/issues/1/labels') >= 0);
+assert(addLabelsReq && addLabelsReq.body.labels.length === 2 && addLabelsReq.body.labels[0] === 1 && typeof addLabelsReq.body.labels[0] === 'number', 'apiAddLabels 提交 int64 label ids（数字）');
 
 requests.length = 0;
 await apiRemoveLabels(cfg, '1', ['1', '2']);

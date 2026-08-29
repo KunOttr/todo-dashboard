@@ -210,7 +210,7 @@ async function apiGetIssueBasics(config, issueId) {
 async function apiCreateIssue(config, repoId, { title, body, labelIds }) {
   if (isGitea(config)) {
     const issue = await giteaRequest(config, 'POST', `/repos/${config.owner}/${config.repo}/issues`, {
-      title, body: body || '', labels: (labelIds || []).map(String),
+      title, body: body || '', labels: (labelIds || []).map((id) => parseInt(String(id), 10)),
     });
     return giteaIssueToInternal(issue);
   }
@@ -283,8 +283,9 @@ async function apiDeleteIssue(config, id) {
 
 async function apiAddLabels(config, labelableId, labelIds) {
   if (isGitea(config)) {
+    // Gitea REST 要求 labels 为 int64 标签 ID 数组，不能传字符串
     await giteaRequest(config, 'POST', `/repos/${config.owner}/${config.repo}/issues/${labelableId}/labels`, {
-      labels: (labelIds || []).map(String),
+      labels: (labelIds || []).map((id) => parseInt(String(id), 10)),
     });
     return [];
   }
