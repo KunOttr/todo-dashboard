@@ -21,9 +21,9 @@ const state = {
     showArchived: false,
   },
   // 内联编辑卡片
-  editor: null, // {mode:'new'|'edit', targetId, title, body, percent, progress, done, tags:Set}
+  editor: null, // {mode:'new'|'edit', targetId, title, body, percent, progress, done}
   // 标签弹窗上下文
-  tagContext: null,  // {mode:'global'|'issue'|'editor', issueId?}
+  tagContext: null,  // {mode:'global'|'issue', issueId?}
   tagPendingDeletes: new Set(),
   tagSystemOpen: false,
   // 同步
@@ -673,7 +673,6 @@ function openEditor(issue) {
     body: issue.body || '',
     percent: useProgress && meta.percent,
     progress: meta.progress,
-    tags: new Set(meta.tags.filter((t) => !isArchiveLabel(t.name)).map((t) => t.name)),
   };
   render();
 }
@@ -685,7 +684,7 @@ function openEditorNew() {
   }
   state.editor = {
     mode: 'new', targetId: null, title: '', body: '',
-    percent: false, progress: 0, tags: new Set(),
+    percent: false, progress: 0,
   };
   render();
   // 聚焦标题输入框
@@ -699,9 +698,6 @@ function editorHTML() {
   const ed = state.editor;
   if (!ed) return '';
   const useProgress = !!(currentRepoConfig() && currentRepoConfig().useProgress);
-  const tagsChips = [...ed.tags].map((n) =>
-    `<span class="tag">${escapeHTML(n)} <button type="button" class="tag-x" data-remove-tag="${escapeHTML(n)}" title="移除">×</button></span>`
-  ).join('');
   const editActions = ed.mode === 'edit'
     ? (() => {
         const issue = state.issues.find((i) => i.id === ed.targetId);
@@ -716,8 +712,6 @@ function editorHTML() {
       <input type="text" class="editor-title" id="editorTitle" value="${escapeHTML(ed.title)}" placeholder="待办标题">
       <textarea class="editor-body" id="editorBody" rows="2" placeholder="描述（可选）">${escapeHTML(ed.body)}</textarea>
       <div class="editor-meta">
-        <span class="editor-tags">${tagsChips || '<span class="card-time">无标签</span>'}</span>
-        <button type="button" class="btn-link" data-act="editor-tags">+ 标签</button>
         ${useProgress ? `<label class="editor-inline"><input type="checkbox" id="editorPercent"${ed.percent ? ' checked' : ''}> 支持百分比</label>` : ''}
       </div>
       ${ed.percent ? `<div class="editor-progress"><span>进度</span>
@@ -763,7 +757,7 @@ function saveEditor() {
     queueOp({
       kind: 'create', tempId,
       title, body: ed.body,
-      labels: [...ed.tags],
+      labels: [],
       percent: ed.percent,
       progress: ed.percent ? ed.progress : 0,
       done: false,
@@ -775,10 +769,6 @@ function saveEditor() {
     issue.title = title;
     issue.body = ed.body;
     queueOp({ kind: 'update', id: issue.id, title, body: ed.body });
-
-    // 标签
-    const curTags = new Set(meta0.tags.filter((t) => !isArchiveLabel(t.name)).map((t) => t.name));
-    if (!setsEqual(curTags, ed.tags)) optimisticSetTags(issue, new Set(ed.tags));
 
     // 百分比支持（仅当仓库开启百分比时才允许调整）
     const wantPercent = useProgress && ed.percent;
@@ -828,13 +818,6 @@ function closeProgressPopover() {
 function openTagModalForIssue(issueId) {
   state.tagContext = { mode: 'issue', issueId };
   prepareTagModal('为待办选择标签。');
-}
-
-function openTagModalForEditor() {
-  const ed = state.editor;
-  const editMode = !!(ed && ed.mode === 'edit');
-  state.tagContext = { mode: 'editor', editMode, issueId: editMode ? ed.targetId : null };
-  prepareTagModal(editMode ? '编辑待办的标签（保存后立即生效）。' : '为新建待办选择标签。');
 }
 
 function openTagModalGlobal() {
@@ -892,11 +875,11 @@ function renderTagManager() {
     return;
   }
 
-  // 待办 / 编辑器模式：只显示非系统标签的多选，无删除按钮
+  // 待办模式：只显示非系统标签的多选，无删除按钮
   const issue = ctx.mode === 'issue' ? state.issues.find((i) => i.id === ctx.issueId) : null;
-  const selected = ctx.mode === 'issue'
-    ? (issue ? new Set(deriveIssueMeta(issue).tags.filter((t) => !isArchiveLabel(t.name)).map((t) => t.name)) : new Set())
-    : new Set(state.editor ? state.editor.tags : []);
+  const selected = issue
+    ? new Set(deriveIssueMeta(issue).tags.filter((t) => !isArchiveLabel(t.name)).map((t) => t.name))
+    : new Set();
   const rows = labels.filter((l) => !isSystem(l)).map((l) => {
     const checked = selected.has(l.name) ? ' checked' : '';
     return `<div class="tag-manage-row">
@@ -969,18 +952,6 @@ async function tagSave() {
       optimisticSetTags(issue, collectTagModalSelection());
       render();
       toast('标签已更新（待自动同步）');
-    }
-  } else if (ctx.mode === 'editor') {
-    if (state.editor) {
-      const sel = collectTagModalSelection();
-      state.editor.tags = sel;
-      // 编辑已有待办时立即应用标签
-      if (ctx.editMode && ctx.issueId) {
-        const issue = state.issues.find((i) => i.id === ctx.issueId);
-        if (issue) optimisticSetTags(issue, sel);
-      }
-      render();
-      toast('标签已' + (ctx.editMode ? '更新（待自动同步）' : '选择'));
     }
   }
   closeModal($('#tagModal'));
@@ -1382,13 +1353,12 @@ function bindEvents() {
 
   $('#main').addEventListener('click', (e) => {
     // 编辑器按钮
-    const editorBtn = e.target.closest('[data-act="editor-save"],[data-act="editor-cancel"],[data-act="editor-tags"],[data-act="editor-archive-delete"]');
+    const editorBtn = e.target.closest('[data-act="editor-save"],[data-act="editor-cancel"],[data-act="editor-archive-delete"]');
     if (editorBtn) {
       e.preventDefault();
       const act = editorBtn.dataset.act;
       if (act === 'editor-save') saveEditor();
       else if (act === 'editor-cancel') cancelEditor();
-      else if (act === 'editor-tags') openTagModalForEditor();
       else if (act === 'editor-archive-delete') {
         const ed = state.editor;
         const issue = ed ? state.issues.find((i) => i.id === ed.targetId) : null;
@@ -1408,13 +1378,6 @@ function bindEvents() {
           toast('已归档（可在筛选「显示归档」中查看）');
         }
       }
-      return;
-    }
-    // 编辑器内移除标签
-    const tagX = e.target.closest('[data-remove-tag]');
-    if (tagX) {
-      if (state.editor) state.editor.tags.delete(tagX.dataset.removeTag);
-      render();
       return;
     }
     // 进度圆环

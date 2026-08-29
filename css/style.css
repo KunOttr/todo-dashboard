@@ -404,14 +404,8 @@ main {
 }
 .editor-body { width: 100%; margin-top: 8px; resize: vertical; }
 .editor-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
-.editor-tags { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .editor-inline { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text); margin: 0; }
 .editor-inline input { accent-color: var(--primary); }
-.tag-x {
-  border: none; background: none; color: var(--text-muted); cursor: pointer;
-  font-size: 12px; padding: 0 0 0 3px; line-height: 1;
-}
-.tag-x:hover { color: var(--red); }
 .editor-progress { margin-top: 12px; }
 .editor-progress > span { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px; }
 
