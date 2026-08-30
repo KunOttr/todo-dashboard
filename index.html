@@ -83,10 +83,6 @@
   <!-- 进度滑动选择弹层 -->
   <div class="progress-popover hidden" id="progressPopover">
     <div class="progress-popover-grid" id="progressPopoverGrid"></div>
-    <div class="progress-popover-actions">
-      <button type="button" class="btn" id="popProgressCancel">取消</button>
-      <button type="button" class="btn btn-primary" id="popProgressOk">确定</button>
-    </div>
   </div>
 
   <!-- 设置 / 多仓库 / 应用设置 -->
@@ -149,7 +145,7 @@
           <ul>
             <li>是否支持百分比是<b>每个仓库单独设置</b>的（添加 / 编辑仓库时勾选）。</li>
             <li>支持百分比的仓库，新建待办可勾选「支持百分比」；该待办用<b>圆环</b>展示进度。</li>
-            <li>点击圆环弹出 <b>0%–100%</b> 滑动进度条，可反复拖动调整，点「确定」才生效；100% 在点击「确定」后标记完成，调低自动回到进行中。点「取消」或点击弹层外则不修改。</li>
+            <li>点击圆环弹出 <b>0%–100%</b> 滑动进度条，可反复拖动调整；<b>点击弹层外即生效</b>（100% 在关闭弹层后标记完成，调低自动回到进行中）。如想放弃调整，请手动把滑块拖回原值再关闭。</li>
             <li>关闭某仓库的百分比时，该仓库进行中待办将回退为未完成并丢失进度（编辑仓库时有确认提示）。</li>
           </ul>
         </div>

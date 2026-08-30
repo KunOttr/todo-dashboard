@@ -500,7 +500,6 @@ main {
   width: 240px;
 }
 .progress-popover.hidden { display: none; }
-.progress-popover-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 
 /* ========== 内联编辑卡片 ========== */
 .editor-card { background: #fffbe8 !important; border-color: #f0d98a; }

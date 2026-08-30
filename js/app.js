@@ -875,6 +875,21 @@ function closeProgressPopover() {
   state.progressPopoverFor = null;
 }
 
+// 应用弹层中当前滑块值并关闭（点击弹层外关闭 = 确定；值与原来一致则不提交）
+function applyProgressPopover() {
+  const slider = document.getElementById('popProgress');
+  const issue = state.issues.find((i) => i.id === state.progressPopoverFor);
+  if (slider && issue) {
+    const v = parseInt(slider.value, 10);
+    if (v !== deriveIssueMeta(issue).progress) {
+      optimisticSetProgress(issue, v);
+      render();
+      toast('进度已更新（待自动同步）');
+    }
+  }
+  closeProgressPopover();
+}
+
 /* ---------------- 标签弹窗 ---------------- */
 
 function openTagModalForIssue(issueId) {
@@ -1495,32 +1510,20 @@ function bindEvents() {
     onCardAction(card.dataset.id, btn.dataset.act);
   });
 
-  // 进度弹层：滑动条实时更新数值（不提交、不关闭，可反复调整）
+  // 进度弹层：滑动条实时更新数值（不提交，点击弹层外关闭时生效）
   $('#progressPopover').addEventListener('input', (e) => {
     if (e.target.id !== 'popProgress') return;
     const label = document.getElementById('popProgressLabel');
     if (label) label.textContent = e.target.value + '%';
   });
-  // 进度弹层：点「确定」才应用进度并关闭（100% 完成也在确认后生效）
-  $('#popProgressOk').addEventListener('click', () => {
-    const slider = document.getElementById('popProgress');
-    const issue = state.issues.find((i) => i.id === state.progressPopoverFor);
-    if (slider && issue) {
-      optimisticSetProgress(issue, parseInt(slider.value, 10));
-      render();
-      toast('进度已更新（待自动同步）');
-    }
-    closeProgressPopover();
-  });
-  // 进度弹层：点「取消」丢弃未确认的调整
-  $('#popProgressCancel').addEventListener('click', closeProgressPopover);
 
   // 关闭下拉 / 弹层
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#tagFilterDropdown')) $('#tagFilterMenu').classList.add('hidden');
     if (!e.target.closest('#repoSwitch')) $('#repoSwitchMenu').classList.add('hidden');
     if (state.progressPopoverFor && !e.target.closest('#progressPopover') && !e.target.closest('[data-ring]')) {
-      closeProgressPopover();
+      // 点击弹层外关闭 = 应用当前滑块值（100% 完成也在此刻生效；想放弃需手动调回原值）
+      applyProgressPopover();
     }
   });
 
