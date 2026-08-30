@@ -21,9 +21,9 @@ const state = {
     showArchived: false,
   },
   // 内联编辑卡片
-  editor: null, // {mode:'new'|'edit', targetId, title, body, percent, progress, done, tags:Set}
+  editor: null, // {mode:'new'|'edit', targetId, title, body, percent, progress, done}
   // 标签弹窗上下文
-  tagContext: null,  // {mode:'global'|'issue'|'editor', issueId?}
+  tagContext: null,  // {mode:'global'|'issue', issueId?}
   tagPendingDeletes: new Set(),
   tagSystemOpen: false,
   // 同步
@@ -588,11 +588,21 @@ function renderList(el, issues, kind) {
   }
   let html = list.map(cardHTML);
   if (ed) {
-    const showHere = ed.mode === 'new' ? kind === 'open' : edInBlock(ed.targetId, kind);
-    if (showHere) html.unshift(editorHTML());
+    if (ed.mode === 'new') {
+      if (kind === 'open') html.unshift(editorHTML());
+    } else if (edInBlock(ed.targetId, kind)) {
+      // 编辑已有待办：编辑卡片插回原卡片所在位置，而非列表顶部
+      const origIdx = issues.findIndex((i) => i.id === ed.targetId);
+      html.splice(Math.min(origIdx, html.length), 0, editorHTML());
+    }
   }
   if (html.length) {
     el.innerHTML = html.join('');
+    updateCardExpandButtons(el);
+    // 字体加载完成后重新检测（行高可能随字体变化）
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => updateCardExpandButtons(el));
+    }
   } else {
     el.innerHTML = `<div class="empty">暂无${kind === 'open' ? '未完成' : '已完成'}任务${hasActiveFilters() ? '（受当前筛选影响）' : ''}</div>`;
   }
@@ -601,6 +611,46 @@ function renderList(el, issues, kind) {
 function hasActiveFilters() {
   const f = state.filters;
   return !!(f.keyword || f.selectedTags.length || f.startDate || f.endDate);
+}
+
+// 长内容：检测正文是否超过 3 行，超出则显示「显示全部」按钮
+function updateCardExpandButtons(root) {
+  root.querySelectorAll('.card-body-text-wrap').forEach((wrap) => {
+    const text = wrap.querySelector('.card-body-text');
+    const btn = wrap.querySelector('.card-expand-btn');
+    if (!text || !btn) return;
+    const overflow = textOverflows(text);
+    btn.classList.toggle('hidden', !overflow);
+    // 若内容不再溢出（如窗口重排后）自动复位展开态
+    if (!overflow && text.classList.contains('expanded')) {
+      text.classList.remove('expanded');
+      btn.textContent = '显示全部';
+    }
+  });
+}
+
+// 判断正文是否被 3 行截断：克隆元素去掉 clamp 后测量完整高度，与截断高度比较。
+// （-webkit-line-clamp 下 scrollHeight 在部分浏览器返回的是截断后高度，不可靠）
+function textOverflows(text) {
+  const clampedH = text.clientHeight;
+  if (clampedH <= 0) return false;
+  const cs = getComputedStyle(text);
+  const clone = text.cloneNode(true);
+  clone.className = '';
+  clone.style.cssText = [
+    'position:absolute', 'left:-9999px', 'top:0', 'visibility:hidden', 'pointer-events:none',
+    'display:block', 'height:auto', 'min-height:0', 'overflow:visible',
+    'white-space:pre-wrap', 'word-break:break-word',
+    'width:' + text.clientWidth + 'px',
+    'font-size:' + cs.fontSize,
+    'font-family:' + cs.fontFamily,
+    'line-height:' + cs.lineHeight,
+    'margin:0', 'padding:0', 'border:0',
+  ].join(';');
+  document.body.appendChild(clone);
+  const fullH = clone.getBoundingClientRect().height;
+  document.body.removeChild(clone);
+  return fullH > clampedH + 1;
 }
 
 function edInBlock(id, kind) {
@@ -626,13 +676,19 @@ function cardHTML(issue) {
   <article class="task-card${closed ? ' task-card-closed' : ''}" data-id="${issue.id}">
     <div class="card-left">${leftHTML}</div>
     <div class="card-main">
-      <div class="card-title">${escapeHTML(issue.title)}</div>
-      ${issue.body ? `<div class="card-body-text">${escapeHTML(issue.body)}</div>` : ''}
-      <div class="card-meta">
-        ${meta.tags.length ? `<span class="card-tags">${tagsHTML}</span>` : ''}
-        <span class="card-time">创建 ${fmtDate(issue.createdAt)}</span>
-        ${closed && issue.closedAt ? `<span class="card-time">完成 ${fmtDate(issue.closedAt)}</span>` : ''}
+      <div class="card-title-line">
         ${issue.number ? `<span class="card-number"><a href="${escapeHTML(issue.url)}" target="_blank" rel="noopener" title="在 GitHub 打开">#${issue.number}</a></span>` : ''}
+        <div class="card-title">${escapeHTML(issue.title)}</div>
+        <span class="card-time">创建 ${fmtDate(issue.createdAt)}</span>
+      </div>
+      ${issue.body ? `<div class="card-body-text-wrap">
+        <div class="card-body-text">${escapeHTML(issue.body)}</div>
+        <button type="button" class="card-expand-btn hidden" data-act="card-expand">显示全部</button>
+      </div>` : ''}
+      <div class="card-meta">
+        <button class="btn-link" data-act="tags" title="直接添加标签">+ 标签</button>
+        ${meta.tags.length ? `<span class="card-tags">${tagsHTML}</span>` : ''}
+        ${closed && issue.closedAt ? `<span class="card-time">完成 ${fmtDate(issue.closedAt)}</span>` : ''}
       </div>
     </div>
     <div class="card-actions">
@@ -674,7 +730,6 @@ function openEditor(issue) {
     body: issue.body || '',
     percent: useProgress && meta.percent,
     progress: meta.progress,
-    tags: new Set(meta.tags.filter((t) => !isArchiveLabel(t.name)).map((t) => t.name)),
   };
   render();
 }
@@ -686,7 +741,7 @@ function openEditorNew() {
   }
   state.editor = {
     mode: 'new', targetId: null, title: '', body: '',
-    percent: false, progress: 0, tags: new Set(),
+    percent: false, progress: 0,
   };
   render();
   // 聚焦标题输入框
@@ -700,15 +755,12 @@ function editorHTML() {
   const ed = state.editor;
   if (!ed) return '';
   const useProgress = !!(currentRepoConfig() && currentRepoConfig().useProgress);
-  const tagsChips = [...ed.tags].map((n) =>
-    `<span class="tag">${escapeHTML(n)} <button type="button" class="tag-x" data-remove-tag="${escapeHTML(n)}" title="移除">×</button></span>`
-  ).join('');
   const editActions = ed.mode === 'edit'
     ? (() => {
         const issue = state.issues.find((i) => i.id === ed.targetId);
         const isArch = issue ? deriveIssueMeta(issue).isArchived : false;
-        // 必须先归档再删除：未归档显示「归档」，已归档显示「删除」
-        return `<button class="btn-link${isArch ? ' danger' : ''}" data-act="editor-archive-delete">${isArch ? '删除' : '归档'}</button>`;
+        // 必须先归档再删除：未归档显示「归档」，已归档显示「删除」；均为红色危险按钮
+        return `<button class="btn btn-danger" data-act="editor-archive-delete">${isArch ? '删除' : '归档'}</button>`;
       })()
     : '';
   return `
@@ -717,14 +769,13 @@ function editorHTML() {
       <input type="text" class="editor-title" id="editorTitle" value="${escapeHTML(ed.title)}" placeholder="待办标题">
       <textarea class="editor-body" id="editorBody" rows="2" placeholder="描述（可选）">${escapeHTML(ed.body)}</textarea>
       <div class="editor-meta">
-        <span class="editor-tags">${tagsChips || '<span class="card-time">无标签</span>'}</span>
-        <button type="button" class="btn-link" data-act="editor-tags">+ 标签</button>
         ${useProgress ? `<label class="editor-inline"><input type="checkbox" id="editorPercent"${ed.percent ? ' checked' : ''}> 支持百分比</label>` : ''}
       </div>
       ${ed.percent ? `<div class="editor-progress"><span>进度</span>
-        <div class="progress-11">${[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((v) =>
-          `<button type="button" class="p11${v === ed.progress ? ' on' : ''}" data-editor-progress="${v}">${v}%</button>`
-        ).join('')}</div>
+        <div class="progress-field">
+          <input type="range" id="editorProgress" min="0" max="100" step="10" value="${ed.progress}">
+          <span id="editorProgressLabel">${ed.progress}%</span>
+        </div>
       </div>` : ''}
     </div>
     <div class="card-actions">
@@ -763,7 +814,7 @@ function saveEditor() {
     queueOp({
       kind: 'create', tempId,
       title, body: ed.body,
-      labels: [...ed.tags],
+      labels: [],
       percent: ed.percent,
       progress: ed.percent ? ed.progress : 0,
       done: false,
@@ -775,10 +826,6 @@ function saveEditor() {
     issue.title = title;
     issue.body = ed.body;
     queueOp({ kind: 'update', id: issue.id, title, body: ed.body });
-
-    // 标签
-    const curTags = new Set(meta0.tags.filter((t) => !isArchiveLabel(t.name)).map((t) => t.name));
-    if (!setsEqual(curTags, ed.tags)) optimisticSetTags(issue, new Set(ed.tags));
 
     // 百分比支持（仅当仓库开启百分比时才允许调整）
     const wantPercent = useProgress && ed.percent;
@@ -797,7 +844,7 @@ function saveEditor() {
   toast('已保存（待自动同步）');
 }
 
-/* ---------------- 进度圆环 / 11 格选择 ---------------- */
+/* ---------------- 进度圆环 / 滑动选择 ---------------- */
 
 function openProgressPopover(issueId, anchor) {
   const issue = state.issues.find((i) => i.id === issueId);
@@ -805,9 +852,11 @@ function openProgressPopover(issueId, anchor) {
   const meta = deriveIssueMeta(issue);
   if (!meta.percent || !(currentRepoConfig() && currentRepoConfig().useProgress)) return;
   const grid = $('#progressPopoverGrid');
-  grid.innerHTML = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((v) =>
-    `<button type="button" class="p11${v === meta.progress ? ' on' : ''}" data-progress-opt="${v}">${v}%</button>`
-  ).join('');
+  grid.innerHTML = `
+    <div class="progress-field">
+      <input type="range" id="popProgress" min="0" max="100" step="10" value="${meta.progress}">
+      <span id="popProgressLabel">${meta.progress}%</span>
+    </div>`;
   const pop = $('#progressPopover');
   const rect = anchor.getBoundingClientRect();
   pop.style.left = Math.min(rect.left, window.innerWidth - 250) + 'px';
@@ -826,13 +875,6 @@ function closeProgressPopover() {
 function openTagModalForIssue(issueId) {
   state.tagContext = { mode: 'issue', issueId };
   prepareTagModal('为待办选择标签。');
-}
-
-function openTagModalForEditor() {
-  const ed = state.editor;
-  const editMode = !!(ed && ed.mode === 'edit');
-  state.tagContext = { mode: 'editor', editMode, issueId: editMode ? ed.targetId : null };
-  prepareTagModal(editMode ? '编辑待办的标签（保存后立即生效）。' : '为新建待办选择标签。');
 }
 
 function openTagModalGlobal() {
@@ -890,11 +932,11 @@ function renderTagManager() {
     return;
   }
 
-  // 待办 / 编辑器模式：只显示非系统标签的多选，无删除按钮
+  // 待办模式：只显示非系统标签的多选，无删除按钮
   const issue = ctx.mode === 'issue' ? state.issues.find((i) => i.id === ctx.issueId) : null;
-  const selected = ctx.mode === 'issue'
-    ? (issue ? new Set(deriveIssueMeta(issue).tags.filter((t) => !isArchiveLabel(t.name)).map((t) => t.name)) : new Set())
-    : new Set(state.editor ? state.editor.tags : []);
+  const selected = issue
+    ? new Set(deriveIssueMeta(issue).tags.filter((t) => !isArchiveLabel(t.name)).map((t) => t.name))
+    : new Set();
   const rows = labels.filter((l) => !isSystem(l)).map((l) => {
     const checked = selected.has(l.name) ? ' checked' : '';
     return `<div class="tag-manage-row">
@@ -967,18 +1009,6 @@ async function tagSave() {
       optimisticSetTags(issue, collectTagModalSelection());
       render();
       toast('标签已更新（待自动同步）');
-    }
-  } else if (ctx.mode === 'editor') {
-    if (state.editor) {
-      const sel = collectTagModalSelection();
-      state.editor.tags = sel;
-      // 编辑已有待办时立即应用标签
-      if (ctx.editMode && ctx.issueId) {
-        const issue = state.issues.find((i) => i.id === ctx.issueId);
-        if (issue) optimisticSetTags(issue, sel);
-      }
-      render();
-      toast('标签已' + (ctx.editMode ? '更新（待自动同步）' : '选择'));
     }
   }
   closeModal($('#tagModal'));
@@ -1362,6 +1392,11 @@ function bindEvents() {
     if (!ed) return;
     if (e.target.id === 'editorTitle') ed.title = e.target.value;
     else if (e.target.id === 'editorBody') ed.body = e.target.value;
+    else if (e.target.id === 'editorProgress') {
+      ed.progress = parseInt(e.target.value, 10);
+      const label = document.getElementById('editorProgressLabel');
+      if (label) label.textContent = ed.progress + '%';
+    }
   });
 
   $('#main').addEventListener('change', (e) => {
@@ -1379,13 +1414,12 @@ function bindEvents() {
 
   $('#main').addEventListener('click', (e) => {
     // 编辑器按钮
-    const editorBtn = e.target.closest('[data-act="editor-save"],[data-act="editor-cancel"],[data-act="editor-tags"],[data-act="editor-archive-delete"]');
+    const editorBtn = e.target.closest('[data-act="editor-save"],[data-act="editor-cancel"],[data-act="editor-archive-delete"]');
     if (editorBtn) {
       e.preventDefault();
       const act = editorBtn.dataset.act;
       if (act === 'editor-save') saveEditor();
       else if (act === 'editor-cancel') cancelEditor();
-      else if (act === 'editor-tags') openTagModalForEditor();
       else if (act === 'editor-archive-delete') {
         const ed = state.editor;
         const issue = ed ? state.issues.find((i) => i.id === ed.targetId) : null;
@@ -1407,24 +1441,25 @@ function bindEvents() {
       }
       return;
     }
-    // 编辑器内移除标签
-    const tagX = e.target.closest('[data-remove-tag]');
-    if (tagX) {
-      if (state.editor) state.editor.tags.delete(tagX.dataset.removeTag);
-      render();
-      return;
-    }
-    // 编辑器进度选择
-    const edP = e.target.closest('[data-editor-progress]');
-    if (edP) {
-      if (state.editor) { state.editor.progress = parseInt(edP.dataset.editorProgress, 10); render(); }
-      return;
-    }
     // 进度圆环
     const ring = e.target.closest('[data-ring]');
     if (ring) {
       e.preventDefault();
       openProgressPopover(ring.dataset.ring, ring);
+      return;
+    }
+    // 长内容展开 / 收起
+    const expandBtn = e.target.closest('[data-act="card-expand"]');
+    if (expandBtn) {
+      e.preventDefault();
+      const wrap = expandBtn.closest('.card-body-text-wrap');
+      const text = wrap ? wrap.querySelector('.card-body-text') : null;
+      if (text) {
+        const wasExpanded = text.classList.contains('expanded');
+        if (!wasExpanded && !textOverflows(text)) return; // 不再溢出则忽略
+        text.classList.toggle('expanded');
+        expandBtn.textContent = wasExpanded ? '显示全部' : '收起';
+      }
       return;
     }
     // 卡片操作
@@ -1436,13 +1471,18 @@ function bindEvents() {
     onCardAction(card.dataset.id, btn.dataset.act);
   });
 
-  // 11 格进度弹层
-  $('#progressPopover').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-progress-opt]');
-    if (!b) return;
+  // 进度弹层：滑动条实时更新数值
+  $('#progressPopover').addEventListener('input', (e) => {
+    if (e.target.id !== 'popProgress') return;
+    const label = document.getElementById('popProgressLabel');
+    if (label) label.textContent = e.target.value + '%';
+  });
+  // 进度弹层：松开滑块确认并应用
+  $('#progressPopover').addEventListener('change', (e) => {
+    if (e.target.id !== 'popProgress') return;
     const issue = state.issues.find((i) => i.id === state.progressPopoverFor);
     if (issue) {
-      optimisticSetProgress(issue, parseInt(b.dataset.progressOpt, 10));
+      optimisticSetProgress(issue, parseInt(e.target.value, 10));
       render();
       toast('进度已更新（待自动同步）');
     }

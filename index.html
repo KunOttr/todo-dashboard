@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GitHub Issues 待办管理</title>
+  <title>TodoDashboard · 代码仓库 Issue 待办</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
   <header class="topbar">
-    <div class="brand"><span class="logo">✓</span> GitHub Todo</div>
+    <div class="brand"><span class="logo">✓</span> TodoDashboard</div>
     <div class="repo-info">
       <div class="repo-switch" id="repoSwitch">
         <button type="button" class="repo-switch-btn" id="repoSwitchBtn" title="切换仓库">未连接仓库 ▾</button>
@@ -80,7 +80,7 @@
     </section>
   </main>
 
-  <!-- 进度 11 格选择弹层 -->
+  <!-- 进度滑动选择弹层 -->
   <div class="progress-popover hidden" id="progressPopover">
     <div class="progress-popover-grid" id="progressPopoverGrid"></div>
   </div>
@@ -92,9 +92,13 @@
       <div class="section-title">仓库（多仓库支持，连接当前选中的仓库）</div>
       <div id="repoCards"></div>
       <button id="btnAddRepo" class="btn">+ 添加仓库</button>
-      <label class="checkbox-line">
-        <input type="checkbox" id="rememberTokenToggle"> 记住 Token（勾选后本设备下次打开自动解密；取消勾选则关闭浏览器后需重新输入，安全性更高）
-      </label>
+      <div class="checkbox-line">
+        <input type="checkbox" id="rememberTokenToggle" aria-label="记住 Token"> <span>记住 Token</span>
+        <span class="info-icon" tabindex="0" role="button" aria-label="查看「记住 Token」说明">
+          <span class="info-glyph">ⓘ</span>
+          <span class="tooltip" role="tooltip">勾选后本设备下次打开自动解密；取消勾选则关闭浏览器后需重新输入，安全性更高</span>
+        </span>
+      </div>
       <p class="modal-note">每个仓库可独立选择是否支持百分比进度；关闭时该仓库进行中的待办将回退为未完成状态并丢失完成进度。</p>
       <p class="modal-note">Token 使用 AES-GCM 加密后存储在浏览器本地，输入框不回显已保存值；编辑仓库时留空 Token 即保持不变。建议使用权限最小化的令牌，勿在公共/共享设备上使用。</p>
       <div id="setupMsg"></div>
@@ -133,6 +137,7 @@
             <li>每条待办 = 一个 Issue；<b>已完成 / 未完成</b> 对应 Issue 的关闭 / 打开状态。</li>
             <li>「未完成」在上方（按创建时间倒序，最新在上）；「已完成」在下方（按完成时间倒序，最近完成在上）。</li>
             <li>点击卡片左侧勾选按钮：未支持百分比的待办点击直接切换完成状态。</li>
+            <li>描述较长时卡片默认只显示 3 行，点击下方「显示全部」可展开查看完整内容，再次点击「收起」折叠。</li>
           </ul>
         </div>
         <div class="help-section">
@@ -140,16 +145,17 @@
           <ul>
             <li>是否支持百分比是<b>每个仓库单独设置</b>的（添加 / 编辑仓库时勾选）。</li>
             <li>支持百分比的仓库，新建待办可勾选「支持百分比」；该待办用<b>圆环</b>展示进度。</li>
-            <li>点击圆环弹出 <b>0%–100% 共 11 格</b>进度选择条；100% 自动标记完成，调低自动回到进行中。</li>
+            <li>点击圆环弹出 <b>0%–100%</b> 滑动进度条；100% 自动标记完成，调低自动回到进行中。</li>
             <li>关闭某仓库的百分比时，该仓库进行中待办将回退为未完成并丢失进度（编辑仓库时有确认提示）。</li>
           </ul>
         </div>
         <div class="help-section">
           <h4>新建与编辑</h4>
           <ul>
-            <li>点操作面板「+ 新建待办」，在顶部出现编辑卡片：输入标题 / 描述、点「+ 标签」多选标签、可勾选支持百分比；点「保存」生效，点「取消」丢弃。</li>
-            <li>点卡片「编辑」后，原卡片隐藏、仅显示编辑卡片；编辑卡片内含「标签」与「归档 / 删除」操作。</li>
-            <li><b>先归档再删除</b>：未归档的待办显示「归档」，归档后按钮变为「删除」（红色，需确认）。</li>
+            <li>点操作面板「+ 新建待办」，在顶部出现编辑卡片：输入标题 / 描述、可勾选支持百分比；点「保存」生效，点「取消」丢弃。</li>
+            <li>每张卡片标题下方一行最左侧有「+ 标签」按钮：点开直接勾选标签，保存后<b>立即生效并实时同步</b>，无需进入编辑模式（新建待办保存后也可用此按钮补加标签）。</li>
+            <li>点卡片「编辑」后，原卡片隐藏、仅显示编辑卡片；编辑卡片支持修改标题 / 描述、进度与「归档 / 删除」操作。</li>
+            <li><b>先归档再删除</b>：未归档的待办显示「归档」（红色），归档后按钮变为「删除」（红色，需确认）。</li>
           </ul>
         </div>
         <div class="help-section">

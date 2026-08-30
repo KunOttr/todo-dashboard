@@ -1,6 +1,6 @@
-# GitHub Todo 竞品分析报告
+# TodoDashboard 竞品分析报告
 
-> 产品：GitHub Todo —— 把 GitHub Issues 当待办的轻量管理面板（纯前端 / GitHub Pages 部署 / 本地优先 + 延迟同步 / 多仓库 / 支持 GitHub 与 Gitea）
+> 产品：TodoDashboard —— 把代码仓库 Issues 当待办的轻量管理面板（纯前端 / GitHub Pages 部署 / 本地优先 + 延迟同步 / 多仓库 / 支持 GitHub 与 Gitea）
 > 调研时间：2026-08-22 ｜ 场景：#10 产品管理
 > 方法：桌面调研（官方文档、G2/Capterra/App Store 评论、Reddit/Hacker News、中文技术社区与测评文章），结论均标注来源
 
@@ -75,7 +75,7 @@
 
 ## 3. 功能对比矩阵
 
-| 维度 | **GitHub Todo（我们）** | GitHub Projects v2 | ZenHub | Linear | Todoist | TickTick | 开源 DIY 代表 |
+| 维度 | **TodoDashboard（我们）** | GitHub Projects v2 | ZenHub | Linear | Todoist | TickTick | 开源 DIY 代表 |
 |---|---|---|---|---|---|---|---|
 | 数据存储 | 用户自己的仓库 | GitHub 云 | 云端（镜像） | 云端 | 云端 | 云端 | 用户自己的仓库 |
 | 数据所有权 | **100% 用户** | 平台方 | 平台方 | 平台方 | 平台方 | 平台方 | 100% 用户 |
@@ -210,7 +210,7 @@
 
 ### 核心定位（一句话）
 
-> **GitHub Todo —— 给开发者自己用的、数据 100% 属于你的 GitHub 原生极简待办。**
+> **TodoDashboard —— 给开发者自己用的、数据 100% 属于你的代码仓库原生极简待办。**
 > （Developer-first · Data-sovereign · Zero-config · Free）
 
 一句话理由：它同时命中 P0 的四个机会点（数据主权/个人场景/极简/免费），且是**竞品结构上抄不走**的组合——商业 SaaS 不可能放弃云端，GitHub 官方不可能为个人做轻量版。

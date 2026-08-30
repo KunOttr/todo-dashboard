@@ -182,11 +182,28 @@ main {
 .check-btn.checked { background: var(--green); border-color: var(--green); }
 
 .card-main { flex: 1; min-width: 0; }
+.card-title-line { display: flex; align-items: center; gap: 8px; }
+.card-title-line .card-title { flex: 1; min-width: 0; }
+.card-title-line .card-time { margin-left: auto; white-space: nowrap; }
 .card-title { font-size: 15px; font-weight: 600; word-break: break-word; }
 .card-body-text {
   margin-top: 4px; font-size: 13px; color: var(--text-muted);
   white-space: pre-wrap; word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
+.card-body-text.expanded {
+  display: block;
+  overflow: visible;
+}
+.card-expand-btn {
+  display: block; margin-top: 4px; padding: 0;
+  border: none; background: none;
+  font-size: 12px; color: var(--primary); cursor: pointer;
+}
+.card-expand-btn:hover { text-decoration: underline; }
 .card-meta {
   margin-top: 8px; display: flex; align-items: center;
   gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted);
@@ -234,6 +251,8 @@ main {
   cursor: pointer; font-size: 13px; padding: 2px;
 }
 .btn-link:hover { text-decoration: underline; }
+.btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
+.btn-danger:hover { background: #b11f28; }
 .danger { color: var(--red); }
 
 /* ========== 模态框 ========== */
@@ -278,6 +297,27 @@ main {
   color: var(--text) !important; margin: 4px 0 12px !important;
 }
 .checkbox-line input { width: auto !important; margin: 0; accent-color: var(--primary); }
+
+/* 设置项旁的信息图标 + tooltip */
+.info-icon {
+  position: relative; display: inline-flex; align-items: center;
+  color: var(--text-muted); cursor: help;
+}
+.info-icon .info-glyph { font-size: 14px; line-height: 1; }
+.info-icon .tooltip {
+  position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%);
+  width: 230px; padding: 8px 10px; background: #24292f; color: #fff;
+  font-size: 12px; line-height: 1.5; border-radius: 6px; text-align: left;
+  white-space: normal; opacity: 0; visibility: hidden;
+  transition: opacity .15s, visibility .15s; z-index: 60;
+  pointer-events: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+.info-icon .tooltip::after {
+  content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: #24292f;
+}
+.info-icon:hover .tooltip,
+.info-icon:focus .tooltip { opacity: 1; visibility: visible; }
 
 .tag-edit { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 .tag-check {
@@ -453,20 +493,13 @@ main {
 .ring-full { stroke: #0f5a24; }
 .ring-text { font-size: 8.5px; font-weight: 600; fill: var(--text-muted); }
 
-/* ========== 11 格进度选择弹层 ========== */
+/* ========== 进度滑动选择弹层 ========== */
 .progress-popover {
   position: fixed; z-index: 45; background: #fff; border: 1px solid var(--border);
-  border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.14); padding: 8px;
+  border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.14); padding: 12px;
   width: 240px;
 }
 .progress-popover.hidden { display: none; }
-.progress-popover-grid { display: grid; grid-template-columns: repeat(11, 1fr); gap: 3px; }
-.p11 {
-  border: 1px solid var(--border); background: #fff; border-radius: 5px;
-  font-size: 10px; padding: 6px 0; cursor: pointer; color: var(--text-muted);
-}
-.p11:hover { background: #f3f4f6; }
-.p11.on { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
 
 /* ========== 内联编辑卡片 ========== */
 .editor-card { background: #fffbe8 !important; border-color: #f0d98a; }
@@ -476,18 +509,10 @@ main {
 }
 .editor-body { width: 100%; margin-top: 8px; resize: vertical; }
 .editor-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
-.editor-tags { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .editor-inline { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text); margin: 0; }
 .editor-inline input { accent-color: var(--primary); }
-.tag-x {
-  border: none; background: none; color: var(--text-muted); cursor: pointer;
-  font-size: 12px; padding: 0 0 0 3px; line-height: 1;
-}
-.tag-x:hover { color: var(--red); }
 .editor-progress { margin-top: 12px; }
 .editor-progress > span { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px; }
-.progress-11 { display: flex; flex-wrap: wrap; gap: 4px; }
-.progress-11 .p11 { flex: 1 0 60px; }
 
 /* ========== 设置：多仓库卡片 ========== */
 .modal-lg { max-width: 640px; }

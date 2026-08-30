@@ -1,4 +1,4 @@
-# 生产级部署指南（GitHub Issues 待办面板）
+# 生产级部署指南（TodoDashboard · 代码仓库 Issue 待办面板）
 
 > 适用：本仓库已接入 esbuild 合并压缩流水线；GitHub Pages 部署支持「分支直部署」与「Actions 自动构建（示例）」两种方式，**任选其一，不强制使用 workflow**。
 > 部署单元是 `dist/`，**源码永不直上线**。
