@@ -631,12 +631,12 @@ function cardHTML(issue) {
       </div>
       ${issue.body ? `<div class="card-body-text">${escapeHTML(issue.body)}</div>` : ''}
       <div class="card-meta">
+        <button class="btn-link" data-act="tags" title="直接添加标签">+ 标签</button>
         ${meta.tags.length ? `<span class="card-tags">${tagsHTML}</span>` : ''}
         ${closed && issue.closedAt ? `<span class="card-time">完成 ${fmtDate(issue.closedAt)}</span>` : ''}
       </div>
     </div>
     <div class="card-actions">
-      <button class="btn-link" data-act="tags" title="直接添加标签">+ 标签</button>
       <button class="btn-link" data-act="edit">编辑</button>
     </div>
   </article>`;
