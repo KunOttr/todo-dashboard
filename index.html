@@ -92,9 +92,13 @@
       <div class="section-title">仓库（多仓库支持，连接当前选中的仓库）</div>
       <div id="repoCards"></div>
       <button id="btnAddRepo" class="btn">+ 添加仓库</button>
-      <label class="checkbox-line">
-        <input type="checkbox" id="rememberTokenToggle"> 记住 Token（勾选后本设备下次打开自动解密；取消勾选则关闭浏览器后需重新输入，安全性更高）
-      </label>
+      <div class="checkbox-line">
+        <input type="checkbox" id="rememberTokenToggle" aria-label="记住 Token"> <span>记住 Token</span>
+        <span class="info-icon" tabindex="0" role="button" aria-label="查看「记住 Token」说明">
+          <span class="info-glyph">ⓘ</span>
+          <span class="tooltip" role="tooltip">勾选后本设备下次打开自动解密；取消勾选则关闭浏览器后需重新输入，安全性更高</span>
+        </span>
+      </div>
       <p class="modal-note">每个仓库可独立选择是否支持百分比进度；关闭时该仓库进行中的待办将回退为未完成状态并丢失完成进度。</p>
       <p class="modal-note">Token 使用 AES-GCM 加密后存储在浏览器本地，输入框不回显已保存值；编辑仓库时留空 Token 即保持不变。建议使用权限最小化的令牌，勿在公共/共享设备上使用。</p>
       <div id="setupMsg"></div>
