@@ -624,11 +624,13 @@ function cardHTML(issue) {
   <article class="task-card${closed ? ' task-card-closed' : ''}" data-id="${issue.id}">
     <div class="card-left">${leftHTML}</div>
     <div class="card-main">
-      <div class="card-title">${escapeHTML(issue.title)}</div>
+      <div class="card-title-line">
+        <div class="card-title">${escapeHTML(issue.title)}</div>
+        <span class="card-time">创建 ${fmtDate(issue.createdAt)}</span>
+      </div>
       ${issue.body ? `<div class="card-body-text">${escapeHTML(issue.body)}</div>` : ''}
       <div class="card-meta">
         ${meta.tags.length ? `<span class="card-tags">${tagsHTML}</span>` : ''}
-        <span class="card-time">创建 ${fmtDate(issue.createdAt)}</span>
         ${closed && issue.closedAt ? `<span class="card-time">完成 ${fmtDate(issue.closedAt)}</span>` : ''}
         ${issue.number ? `<span class="card-number"><a href="${escapeHTML(issue.url)}" target="_blank" rel="noopener" title="在 GitHub 打开">#${issue.number}</a></span>` : ''}
       </div>
