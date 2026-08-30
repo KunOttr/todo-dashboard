@@ -500,6 +500,7 @@ main {
   width: 240px;
 }
 .progress-popover.hidden { display: none; }
+.progress-popover-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 
 /* ========== 内联编辑卡片 ========== */
 .editor-card { background: #fffbe8 !important; border-color: #f0d98a; }
@@ -522,6 +523,10 @@ main {
   background: #fff;
 }
 .repo-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.repo-auth-error {
+  margin: 8px 0; padding: 8px 10px; border-radius: 6px;
+  background: var(--red); color: #fff; font-size: 13px; font-weight: 600;
+}
 .repo-meta { font-size: 12px; color: var(--text-muted); margin: 4px 0 8px; }
 .repo-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .repo-edit-card label { display: block; margin-bottom: 10px; font-size: 13px; color: var(--text-muted); }

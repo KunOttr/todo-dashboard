@@ -32,6 +32,8 @@ const state = {
   autoSaveDueAt: 0,
   flushing: false,
   progressPopoverFor: null,
+  // token 失效标记：401 后置位，设置弹窗中醒目提示
+  repoAuthError: false,
   // 设置弹窗：正在编辑的仓库卡片
   repoCardEdit: null, // null | {mode:'edit',index} | {mode:'add'}
 };
@@ -250,11 +252,13 @@ async function connect() {
     state.issues = await apiGetIssues(cfg);
     state.connState = 'ok';
     state.connError = '';
+    state.repoAuthError = false;
     render();
     renderAppState();
   } catch (e) {
     state.connState = 'error';
     state.connError = e.message;
+    if (e.code === 'unauthorized') state.repoAuthError = true;
     renderAppState();
     toast('连接失败: ' + e.message, true);
   } finally {
@@ -385,6 +389,7 @@ async function flush() {
     } catch (e) {
       failedIdx = i;
       failedMsg = e.message;
+      if (e.code === 'unauthorized') state.repoAuthError = true;
       break;
     }
   }
@@ -1081,13 +1086,19 @@ function renderRepoCards() {
     const active = idx === cfg.activeIndex;
     const providerName = r.provider === 'gitea' ? 'Gitea' : 'GitHub';
     const tokenState = r.token ? '已配置' : '未配置';
+    const authWarn = active && state.repoAuthError
+      ? '<div class="repo-auth-error">⚠ Token 已过期或无效，请点击「编辑」重新填写并保存</div>'
+      : '';
+    const tUrl = tokenManageUrl(r);
     html += `<div class="repo-card">
       <div class="repo-head"><strong>${escapeHTML(r.owner)} / ${escapeHTML(r.repo)}</strong>
         <span class="sys-badge">${providerName}</span>
         ${active ? '<span class="sys-badge">当前</span>' : ''}
       </div>
+      ${authWarn}
       <div class="repo-meta">Token: ${tokenState} · 百分比: ${r.useProgress ? '开启' : '关闭'}${r.baseUrl ? ' · ' + escapeHTML(r.baseUrl.replace(/^https?:\/\//, '')) : ''}</div>
       <div class="repo-actions">
+        ${tUrl ? `<a class="btn" href="${tUrl}" target="_blank" rel="noopener">管理 Token ↗</a>` : ''}
         ${active ? '' : `<button type="button" class="btn" data-repo-connect="${idx}">连接</button>`}
         <button type="button" class="btn" data-repo-edit="${idx}">编辑</button>
         <button type="button" class="btn danger" data-repo-del="${idx}">删除</button>
@@ -1099,6 +1110,17 @@ function renderRepoCards() {
     html = '<div class="card-time">尚未配置仓库，点击下方按钮添加。</div>';
   }
   el.innerHTML = html;
+}
+
+/* 跳转对应平台 Token 管理页：GitHub 官方 / GHE 自建 / Gitea 自建 */
+function tokenManageUrl(r) {
+  if (r.provider === 'gitea') {
+    const base = (r.baseUrl || '').replace(/\/+$/, '');
+    return base ? base + '/user/settings/applications' : '';
+  }
+  const base = (r.baseUrl || '').replace(/\/+$/, '');
+  if (base && !/^(https?:)?\/\/github\.com$/i.test(base)) return base + '/settings/tokens';
+  return 'https://github.com/settings/tokens';
 }
 
 function repoEditCardHTML(idx, r) {
@@ -1203,6 +1225,8 @@ function saveRepoCard(idx) {
   }
   saveConfig();
   state.repoCardEdit = null;
+  // 更新了当前仓库的 Token：清除失效标记
+  if (idx === state.config.activeIndex) state.repoAuthError = false;
   msg.textContent = '';
   renderRepoCards();
 
@@ -1471,23 +1495,25 @@ function bindEvents() {
     onCardAction(card.dataset.id, btn.dataset.act);
   });
 
-  // 进度弹层：滑动条实时更新数值
+  // 进度弹层：滑动条实时更新数值（不提交、不关闭，可反复调整）
   $('#progressPopover').addEventListener('input', (e) => {
     if (e.target.id !== 'popProgress') return;
     const label = document.getElementById('popProgressLabel');
     if (label) label.textContent = e.target.value + '%';
   });
-  // 进度弹层：松开滑块确认并应用
-  $('#progressPopover').addEventListener('change', (e) => {
-    if (e.target.id !== 'popProgress') return;
+  // 进度弹层：点「确定」才应用进度并关闭（100% 完成也在确认后生效）
+  $('#popProgressOk').addEventListener('click', () => {
+    const slider = document.getElementById('popProgress');
     const issue = state.issues.find((i) => i.id === state.progressPopoverFor);
-    if (issue) {
-      optimisticSetProgress(issue, parseInt(e.target.value, 10));
+    if (slider && issue) {
+      optimisticSetProgress(issue, parseInt(slider.value, 10));
       render();
       toast('进度已更新（待自动同步）');
     }
     closeProgressPopover();
   });
+  // 进度弹层：点「取消」丢弃未确认的调整
+  $('#popProgressCancel').addEventListener('click', closeProgressPopover);
 
   // 关闭下拉 / 弹层
   document.addEventListener('click', (e) => {

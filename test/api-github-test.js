@@ -136,9 +136,11 @@ assert(threw.indexOf('混合内容') >= 0 || threw.indexOf('HTTPS') >= 0, 'HTTPS
 // token 过期：HTTP 401 应提示 Token 无效，而不是 data is undefined 之类的晦涩错误
 fail401 = true;
 let authErr = '';
-try { await apiGetRepo(cfg); } catch (e) { authErr = e.message; }
+let authErrCode = '';
+try { await apiGetRepo(cfg); } catch (e) { authErr = e.message; authErrCode = e.code; }
 fail401 = false;
 assert(authErr.indexOf('401') >= 0 && authErr.indexOf('Token') >= 0, '401 提示 Token 过期/无效');
+assert(authErrCode === 'unauthorized', '401 错误带 unauthorized code');
 console.log('--- GITHUB TESTS DONE ---');
 `;
 

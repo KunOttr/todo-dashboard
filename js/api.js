@@ -34,7 +34,9 @@ async function gql(config, query, variables) {
   // token 过期 / 无效时 GitHub 返回 HTTP 401（body 无 errors/data），必须显式检查
   if (!res.ok) {
     if (res.status === 401) {
-      throw new Error('GitHub Token 已过期或无效（HTTP 401 Bad credentials），请在设置中重新填写 Token');
+      const err = new Error('GitHub Token 已过期或无效（HTTP 401 Bad credentials），请在设置中重新填写 Token');
+      err.code = 'unauthorized';
+      throw err;
     }
     if (res.status === 403) {
       throw new Error('GitHub API 请求被拒绝（HTTP 403）：可能是速率限制或权限不足，请在设置中检查 Token');
@@ -90,7 +92,9 @@ async function giteaRequest(config, method, path, body) {
   }
   if (!res.ok) {
     if (res.status === 401) {
-      throw new Error('Gitea Token 已过期或无效（HTTP 401），请在设置中重新填写 Token');
+      const err = new Error('Gitea Token 已过期或无效（HTTP 401），请在设置中重新填写 Token');
+      err.code = 'unauthorized';
+      throw err;
     }
     let msg = 'HTTP ' + res.status;
     try {
