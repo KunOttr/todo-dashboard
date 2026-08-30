@@ -27,6 +27,7 @@ body {
   color: var(--text);
   font-size: 14px;
   line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ========== 顶部栏 ========== */
@@ -114,6 +115,7 @@ select:focus {
   transition: background .15s;
 }
 .chip:hover { background: #f3f4f6; }
+.chip:active { background: #e8eaed; }
 .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tag-color, #8c959f); }
 .chip.selected {
   border-color: var(--tag-color, var(--primary));
@@ -129,7 +131,7 @@ select:focus {
 /* ========== 主体 / 任务区块 ========== */
 main {
   max-width: 980px;
-  margin: 24px auto 80px;
+  margin: 24px auto calc(80px + env(safe-area-inset-bottom, 0px));
   padding: 0 16px;
   display: flex;
   flex-direction: column;
@@ -179,6 +181,7 @@ main {
   transition: background .15s, border-color .15s;
 }
 .check-btn:hover { border-color: var(--green); }
+.check-btn:active { border-color: var(--green); background: #e6ffec; }
 .check-btn.checked { background: var(--green); border-color: var(--green); }
 
 .card-main { flex: 1; min-width: 0; }
@@ -243,16 +246,20 @@ main {
   transition: background .15s;
 }
 .btn:hover { background: #eef1f4; }
+.btn:active { background: #e2e6ea; }
 .btn:disabled { opacity: .6; cursor: not-allowed; }
 .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
 .btn-primary:hover { background: var(--primary-hover); }
+.btn-primary:active { background: var(--primary-hover); filter: brightness(.92); }
 .btn-link {
   background: none; border: none; color: var(--primary);
   cursor: pointer; font-size: 13px; padding: 2px;
 }
 .btn-link:hover { text-decoration: underline; }
+.btn-link:active { color: #054da0; }
 .btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
 .btn-danger:hover { background: #b11f28; }
+.btn-danger:active { filter: brightness(.9); }
 .danger { color: var(--red); }
 
 /* ========== 模态框 ========== */
@@ -260,7 +267,7 @@ main {
   position: fixed; inset: 0;
   background: rgba(31, 35, 40, 0.45);
   display: flex; align-items: flex-start; justify-content: center;
-  padding: 8vh 16px; z-index: 50; overflow: auto;
+  padding: 8vh 16px calc(8vh + env(safe-area-inset-bottom, 0px)); z-index: 50; overflow: auto;
 }
 .modal-overlay.hidden { display: none; }
 .modal {
@@ -353,7 +360,7 @@ main {
 .no-config-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
 .toast {
-  position: fixed; bottom: 24px; left: 50%;
+  position: fixed; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 50%;
   transform: translateX(-50%) translateY(20px);
   background: #1f2328; color: #fff; padding: 10px 18px;
   border-radius: 8px; font-size: 14px; opacity: 0; transition: all .25s;
@@ -385,6 +392,15 @@ main {
   .brand { flex: 1 1 auto; font-size: 16px; }
   .repo-info { flex-basis: 100%; order: 3; }
   .topbar-actions { flex: 1 1 auto; justify-content: flex-end; }
+
+  /* 输入控件字号 ≥16px：避免 iOS Safari 聚焦时页面自动放大 */
+  input, textarea, select { font-size: 16px; }
+
+  /* 触摸目标放大（勾选按钮 / 卡片链接 / 筛选 chip） */
+  .check-btn { width: 30px; height: 30px; font-size: 15px; line-height: 26px; }
+  .btn-link { padding: 8px 4px; }
+  .card-actions .btn-link { flex: 1; text-align: center; }
+  .chip { padding: 6px 10px; }
 
   .filters {
     position: static;          /* 移动端不吸顶，防止与换行的顶栏重叠 */
@@ -419,26 +435,29 @@ main {
     justify-content: flex-end;
     gap: 6px;
   }
-  .card-actions .btn-link { flex: 1; text-align: center; }
 
   .progress-row { flex-wrap: wrap; }
   .progress-row input[type="range"] { width: 100%; }
-  .modal-overlay { padding: 3vh 10px; }
+  .modal-overlay { padding: 3vh 10px calc(3vh + env(safe-area-inset-bottom, 0px)); }
   .modal { padding: 18px; }
   .new-tag-row { flex-wrap: wrap; }
   .new-tag-row input[type="text"] { flex-basis: 100%; }
   .repo-edit-card input[type="text"], .repo-edit-card input[type="password"] { width: 100%; }
+  /* 仓库切换菜单靠右展开，避免溢出屏幕右缘 */
+  .repo-switch-menu { left: auto; right: 0; }
 }
 
 /* 超小屏（手机竖屏）微调 */
 @media (max-width: 480px) {
-  body { font-size: 13px; }
+  body { font-size: 14px; }
   .topbar { padding: 8px 12px; }
   .brand { font-size: 15px; }
   .repo-switch-btn { max-width: 160px; font-size: 12px; }
-  main { padding: 0 12px; margin-top: 16px; }
+  main { padding: 0 12px; margin-top: 16px; gap: 20px; }
+  .block-title { font-size: 16px; }
   .task-card { padding: 12px; }
   .card-title { font-size: 14px; }
+  .card-title-line .card-time { font-size: 11px; }
   .progress-popover { width: min(92vw, 240px); }
   .toast { font-size: 13px; max-width: 94vw; }
   .modal h3 { font-size: 16px; }
@@ -468,6 +487,7 @@ main {
   background: #fff; font-size: 13px; cursor: pointer; color: var(--text);
 }
 .filter-dropdown-btn:hover { background: #f3f4f6; }
+.filter-dropdown-btn:active { background: #e8eaed; }
 .filter-dropdown-menu {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
   min-width: 200px; max-height: 260px; overflow: auto;
@@ -522,7 +542,7 @@ main {
   background: #fff;
 }
 .repo-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-.repo-meta { font-size: 12px; color: var(--text-muted); margin: 4px 0 8px; }
+.repo-meta { font-size: 12px; color: var(--text-muted); margin: 4px 0 8px; overflow-wrap: anywhere; }
 .repo-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .repo-edit-card label { display: block; margin-bottom: 10px; font-size: 13px; color: var(--text-muted); }
 .repo-edit-card input[type="text"], .repo-edit-card input[type="password"] { width: 100%; margin-top: 4px; color: var(--text); }
