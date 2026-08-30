@@ -1127,15 +1127,15 @@ function renderRepoCards() {
   el.innerHTML = html;
 }
 
-/* 跳转对应平台 Token 管理页：GitHub 官方 / GHE 自建 / Gitea 自建 */
+/* 跳转对应平台 Token 管理页：GitHub Fine-grained / GHE 自建 / Gitea 自建 */
 function tokenManageUrl(r) {
   if (r.provider === 'gitea') {
     const base = (r.baseUrl || '').replace(/\/+$/, '');
     return base ? base + '/user/settings/applications' : '';
   }
   const base = (r.baseUrl || '').replace(/\/+$/, '');
-  if (base && !/^(https?:)?\/\/github\.com$/i.test(base)) return base + '/settings/tokens';
-  return 'https://github.com/settings/tokens';
+  if (base && !/^(https?:)?\/\/github\.com$/i.test(base)) return base + '/settings/personal-access-tokens';
+  return 'https://github.com/settings/personal-access-tokens';
 }
 
 function repoEditCardHTML(idx, r) {
