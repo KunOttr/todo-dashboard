@@ -2,7 +2,7 @@
   "name": "github-todo",
   "version": "1.0.0",
   "private": true,
-  "description": "纯前端 GitHub Issues 待办管理面板（生产级构建：esbuild 合并压缩 + GitHub Pages Actions 部署）",
+  "description": "TodoDashboard：纯前端多代码仓库 Issue 待办管理面板（支持 GitHub / Gitea；生产级构建：esbuild 合并压缩 + GitHub Pages Actions 部署）",
   "scripts": {
     "build": "node build.mjs",
     "test": "node test/integration-test.js && node test/api-github-test.js && node test/api-gitea-test.js",
