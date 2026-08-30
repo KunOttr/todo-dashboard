@@ -31,10 +31,28 @@ async function gql(config, query, variables) {
   } catch (e) {
     throw new Error('网络错误，请检查网络连接');
   }
+  // token 过期 / 无效时 GitHub 返回 HTTP 401（body 无 errors/data），必须显式检查
+  if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error('GitHub Token 已过期或无效（HTTP 401 Bad credentials），请在设置中重新填写 Token');
+    }
+    if (res.status === 403) {
+      throw new Error('GitHub API 请求被拒绝（HTTP 403）：可能是速率限制或权限不足，请在设置中检查 Token');
+    }
+    let msg = 'GitHub API 请求失败（HTTP ' + res.status + '）';
+    try {
+      const j = await res.json();
+      if (j && j.message) msg = j.message;
+    } catch (e) { /* 忽略非 JSON 错误体 */ }
+    throw new Error(msg);
+  }
   const json = await res.json();
   if (json.errors && json.errors.length) {
     const msg = json.errors.map((err) => err.message).join('; ');
     throw new Error(msg);
+  }
+  if (json.data === undefined) {
+    throw new Error('GitHub API 返回异常（缺少 data 字段），请检查 Token 是否有效');
   }
   return json.data;
 }
@@ -71,6 +89,9 @@ async function giteaRequest(config, method, path, body) {
     throw new Error('连接失败：请检查网络连接。若为自建 Gitea，需在其 app.ini 的 [cors] 段设置 ENABLED = true 并重启服务。');
   }
   if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error('Gitea Token 已过期或无效（HTTP 401），请在设置中重新填写 Token');
+    }
     let msg = 'HTTP ' + res.status;
     try {
       const j = await res.json();

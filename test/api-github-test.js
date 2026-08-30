@@ -6,6 +6,8 @@ const requests = [];
 const urls = [];
 function record(body, url) { urls.push(url); requests.push(body ? JSON.parse(body) : null); }
 
+let fail401 = false;
+
 const issue = {
   id: 'G1', number: 1, title: '任务A', body: '描述', state: 'OPEN',
   createdAt: '2026-08-01T08:00:00Z', closedAt: null, url: 'https://github.com/o/r/issues/1',
@@ -15,6 +17,13 @@ const issue = {
 async function fakeFetch(url, init) {
   const body = init && init.body;
   record(body, url);
+  if (fail401) {
+    return {
+      ok: false, status: 401,
+      async json() { return { message: 'Bad credentials', documentation_url: 'https://docs.github.com/rest', status: 401 }; },
+      async text() { return JSON.stringify({ message: 'Bad credentials' }); },
+    };
+  }
   const { query } = body ? JSON.parse(body) : {};
   const json = (data) => ({ ok: true, status: 200, async json() { return { data }; }, async text() { return JSON.stringify({ data }); } });
 
@@ -123,6 +132,13 @@ let threw = '';
 try { await apiGetRepo({ ...cfg, baseUrl: 'http://ghe.example.com' }); } catch (e) { threw = e.message; }
 delete global.window;
 assert(threw.indexOf('混合内容') >= 0 || threw.indexOf('HTTPS') >= 0, 'HTTPS 页面访问 HTTP GHE 提示混合内容');
+
+// token 过期：HTTP 401 应提示 Token 无效，而不是 data is undefined 之类的晦涩错误
+fail401 = true;
+let authErr = '';
+try { await apiGetRepo(cfg); } catch (e) { authErr = e.message; }
+fail401 = false;
+assert(authErr.indexOf('401') >= 0 && authErr.indexOf('Token') >= 0, '401 提示 Token 过期/无效');
 console.log('--- GITHUB TESTS DONE ---');
 `;
 
