@@ -592,6 +592,10 @@ function renderList(el, issues, kind) {
   if (html.length) {
     el.innerHTML = html.join('');
     updateCardExpandButtons(el);
+    // 字体加载完成后重新检测（行高可能随字体变化）
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => updateCardExpandButtons(el));
+    }
   } else {
     el.innerHTML = `<div class="empty">暂无${kind === 'open' ? '未完成' : '已完成'}任务${hasActiveFilters() ? '（受当前筛选影响）' : ''}</div>`;
   }
@@ -604,11 +608,11 @@ function hasActiveFilters() {
 
 // 长内容：检测正文是否超过 3 行，超出则显示「显示全部」按钮
 function updateCardExpandButtons(root) {
-  root.querySelectorAll('.card-body-text').forEach((text) => {
-    const wrap = text.closest('.card-body-text-wrap');
-    const btn = wrap ? wrap.querySelector('.card-expand-btn') : null;
-    if (!btn) return;
-    const overflow = text.scrollHeight > text.clientHeight + 1;
+  root.querySelectorAll('.card-body-text-wrap').forEach((wrap) => {
+    const text = wrap.querySelector('.card-body-text');
+    const btn = wrap.querySelector('.card-expand-btn');
+    if (!text || !btn) return;
+    const overflow = textOverflows(text);
     btn.classList.toggle('hidden', !overflow);
     // 若内容不再溢出（如窗口重排后）自动复位展开态
     if (!overflow && text.classList.contains('expanded')) {
@@ -616,6 +620,30 @@ function updateCardExpandButtons(root) {
       btn.textContent = '显示全部';
     }
   });
+}
+
+// 判断正文是否被 3 行截断：克隆元素去掉 clamp 后测量完整高度，与截断高度比较。
+// （-webkit-line-clamp 下 scrollHeight 在部分浏览器返回的是截断后高度，不可靠）
+function textOverflows(text) {
+  const clampedH = text.clientHeight;
+  if (clampedH <= 0) return false;
+  const cs = getComputedStyle(text);
+  const clone = text.cloneNode(true);
+  clone.className = '';
+  clone.style.cssText = [
+    'position:absolute', 'left:-9999px', 'top:0', 'visibility:hidden', 'pointer-events:none',
+    'display:block', 'height:auto', 'min-height:0', 'overflow:visible',
+    'white-space:pre-wrap', 'word-break:break-word',
+    'width:' + text.clientWidth + 'px',
+    'font-size:' + cs.fontSize,
+    'font-family:' + cs.fontFamily,
+    'line-height:' + cs.lineHeight,
+    'margin:0', 'padding:0', 'border:0',
+  ].join(';');
+  document.body.appendChild(clone);
+  const fullH = clone.getBoundingClientRect().height;
+  document.body.removeChild(clone);
+  return fullH > clampedH + 1;
 }
 
 function edInBlock(id, kind) {
@@ -1417,7 +1445,7 @@ function bindEvents() {
       const text = wrap ? wrap.querySelector('.card-body-text') : null;
       if (text) {
         const wasExpanded = text.classList.contains('expanded');
-        if (!wasExpanded && text.scrollHeight <= text.clientHeight + 1) return; // 不再溢出则忽略
+        if (!wasExpanded && !textOverflows(text)) return; // 不再溢出则忽略
         text.classList.toggle('expanded');
         expandBtn.textContent = wasExpanded ? '显示全部' : '收起';
       }
