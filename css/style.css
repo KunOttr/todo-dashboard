@@ -183,6 +183,8 @@ main {
 
 .card-main { flex: 1; min-width: 0; }
 .card-title-line { display: flex; align-items: center; gap: 8px; }
+.card-title-line .card-title { flex: 1; min-width: 0; }
+.card-title-line .card-time { margin-left: auto; white-space: nowrap; }
 .card-title { font-size: 15px; font-weight: 600; word-break: break-word; }
 .card-body-text {
   margin-top: 4px; font-size: 13px; color: var(--text-muted);

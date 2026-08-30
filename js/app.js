@@ -627,11 +627,11 @@ function cardHTML(issue) {
       <div class="card-title-line">
         ${issue.number ? `<span class="card-number"><a href="${escapeHTML(issue.url)}" target="_blank" rel="noopener" title="在 GitHub 打开">#${issue.number}</a></span>` : ''}
         <div class="card-title">${escapeHTML(issue.title)}</div>
+        <span class="card-time">创建 ${fmtDate(issue.createdAt)}</span>
       </div>
       ${issue.body ? `<div class="card-body-text">${escapeHTML(issue.body)}</div>` : ''}
       <div class="card-meta">
         ${meta.tags.length ? `<span class="card-tags">${tagsHTML}</span>` : ''}
-        <span class="card-time">创建 ${fmtDate(issue.createdAt)}</span>
         ${closed && issue.closedAt ? `<span class="card-time">完成 ${fmtDate(issue.closedAt)}</span>` : ''}
       </div>
     </div>
