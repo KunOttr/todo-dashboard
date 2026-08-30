@@ -189,7 +189,21 @@ main {
 .card-body-text {
   margin-top: 4px; font-size: 13px; color: var(--text-muted);
   white-space: pre-wrap; word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
+.card-body-text.expanded {
+  display: block;
+  overflow: visible;
+}
+.card-expand-btn {
+  display: block; margin-top: 4px; padding: 0;
+  border: none; background: none;
+  font-size: 12px; color: var(--primary); cursor: pointer;
+}
+.card-expand-btn:hover { text-decoration: underline; }
 .card-meta {
   margin-top: 8px; display: flex; align-items: center;
   gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted);
