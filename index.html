@@ -18,6 +18,13 @@
       <button id="btnTagsManage" class="btn hidden">标签管理</button>
     </div>
     <div class="topbar-actions">
+      <div class="more-wrap">
+        <button id="btnMore" class="btn btn-more" title="更多" aria-label="更多">⚙</button>
+        <div class="more-menu hidden" id="moreMenu">
+          <button type="button" class="more-item" data-more="help">帮助</button>
+          <button type="button" class="more-item" data-more="settings">设置</button>
+        </div>
+      </div>
       <button id="btnHelp" class="btn" title="使用帮助">帮助</button>
       <button id="btnSettings" class="btn">设置</button>
     </div>
@@ -85,6 +92,22 @@
     <div class="progress-popover-grid" id="progressPopoverGrid"></div>
   </div>
 
+  <!-- 移动端：长按卡片操作菜单 -->
+  <div class="card-menu hidden" id="cardMenu">
+    <div class="card-menu-title" id="cardMenuTitle"></div>
+    <button type="button" class="card-menu-item" data-card-menu="edit">编辑</button>
+  </div>
+
+  <!-- 移动端：全屏文本输入 -->
+  <div class="full-editor hidden" id="fullEditor">
+    <div class="full-editor-head">编辑描述</div>
+    <textarea id="fullEditorText" placeholder="描述（可选）"></textarea>
+    <div class="full-editor-actions">
+      <button id="fullEditorCancel" class="btn">取消</button>
+      <button id="fullEditorOk" class="btn btn-primary">完成</button>
+    </div>
+  </div>
+
   <!-- 设置 / 多仓库 / 应用设置 -->
   <div class="modal-overlay hidden" id="setupModal">
     <div class="modal modal-lg">
@@ -138,6 +161,7 @@
             <li>「未完成」在上方（按创建时间倒序，最新在上）；「已完成」在下方（按完成时间倒序，最近完成在上）。</li>
             <li>点击卡片左侧勾选按钮：未支持百分比的待办点击直接切换完成状态。</li>
             <li>描述较长时卡片默认只显示 3 行，点击下方「显示全部」可展开查看完整内容，再次点击「收起」折叠。</li>
+            <li><b>移动端</b>：<b>长按卡片</b>弹出操作菜单（含「编辑」）；编辑卡片中点描述框进入<b>全屏输入</b>；顶部 <b>⚙</b> 菜单内可打开「帮助」或「设置」。</li>
           </ul>
         </div>
         <div class="help-section">

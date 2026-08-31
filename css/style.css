@@ -50,6 +50,65 @@ body {
 .repo-info a:hover { text-decoration: underline; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
+/* 移动端「更多」菜单（⚙ 按钮 + 帮助/设置下拉），PC 隐藏 */
+.more-wrap { position: relative; display: none; }
+.btn-more { font-size: 16px; line-height: 1; padding: 8px 12px; }
+.more-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
+  min-width: 140px; background: #fff; border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12); padding: 6px;
+}
+.more-menu.hidden { display: none; }
+.more-item {
+  display: block; width: 100%; text-align: left; padding: 9px 12px;
+  border: none; background: none; font-size: 14px; color: var(--text);
+  border-radius: 6px; cursor: pointer;
+}
+.more-item:active { background: #f3f4f6; }
+
+/* 移动端：长按卡片操作菜单（PC 隐藏） */
+.card-menu {
+  position: fixed; z-index: 45; background: #fff; border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14); padding: 6px;
+  min-width: 160px; max-width: min(80vw, 240px);
+}
+.card-menu.hidden { display: none; }
+.card-menu-title {
+  font-size: 12px; color: var(--text-muted); padding: 4px 10px 8px;
+  border-bottom: 1px solid var(--border); margin-bottom: 4px;
+  word-break: break-all; max-height: 40px; overflow: hidden;
+}
+.card-menu-item {
+  display: block; width: 100%; text-align: left; padding: 11px 12px;
+  border: none; background: none; font-size: 14px; color: var(--text);
+  border-radius: 6px; cursor: pointer;
+}
+.card-menu-item:active { background: #f3f4f6; }
+@media (min-width: 721px) { .card-menu { display: none !important; } }
+
+/* 移动端：全屏文本输入（PC 隐藏） */
+.full-editor {
+  position: fixed; inset: 0; z-index: 70; background: #fff;
+  display: flex; flex-direction: column;
+}
+.full-editor.hidden { display: none; }
+.full-editor-head {
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+  font-size: 15px; font-weight: 600; color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.full-editor textarea {
+  flex: 1; width: 100%; border: none; padding: 16px;
+  font-size: 16px; line-height: 1.6; resize: none; outline: none;
+  font-family: inherit; color: var(--text); box-sizing: border-box;
+}
+.full-editor-actions {
+  display: flex; gap: 10px; justify-content: flex-end;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+}
+@media (min-width: 721px) { .full-editor { display: none !important; } }
+
 .switch-wrap {
   display: flex; align-items: center; gap: 6px;
   font-size: 13px; color: var(--text-muted); cursor: pointer;
@@ -387,11 +446,15 @@ main {
   .topbar {
     padding: 10px 14px;
     gap: 10px;
-    position: static;          /* 顶栏换行后取消吸顶，避免遮挡内容 */
+    position: relative;        /* 供右上角「更多」按钮绝对定位 */
   }
-  .brand { flex: 1 1 auto; font-size: 16px; }
+  .brand { flex: 1 1 100%; text-align: center; font-size: 16px; order: 0; }
   .repo-info { flex-basis: 100%; order: 3; }
-  .topbar-actions { flex: 1 1 auto; justify-content: flex-end; }
+  .topbar-actions { order: 1; }
+  /* 帮助/设置合并为右上角 ⚙ 更多菜单 */
+  .more-wrap { display: block; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); }
+  .more-wrap .btn-more { padding: 8px 10px; }
+  #btnHelp, #btnSettings { display: none; }
 
   /* 输入控件字号 ≥16px：避免 iOS Safari 聚焦时页面自动放大 */
   input, textarea, select { font-size: 16px; }
@@ -426,15 +489,9 @@ main {
   .filter-dropdown-menu { width: 100%; max-width: 100%; left: 0; right: 0; }
 
   /* 卡片：勾选 + 主体保持一行，操作按钮换行占满底部 */
-  .task-card { flex-wrap: wrap; }
+  .task-card { flex-wrap: wrap; touch-action: manipulation; }
   .card-left { padding-top: 0; }
-  .card-actions {
-    flex-basis: 100%;
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 6px;
-  }
+  .card-actions { display: none; }   /* 「编辑」改由长按卡片弹出菜单 */
 
   .progress-row { flex-wrap: wrap; }
   .progress-row input[type="range"] { width: 100%; }

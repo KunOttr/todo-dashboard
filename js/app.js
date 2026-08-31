@@ -772,7 +772,7 @@ function editorHTML() {
   <article class="task-card editor-card">
     <div class="card-main">
       <input type="text" class="editor-title" id="editorTitle" value="${escapeHTML(ed.title)}" placeholder="待办标题">
-      <textarea class="editor-body" id="editorBody" rows="2" placeholder="描述（可选）">${escapeHTML(ed.body)}</textarea>
+      <textarea class="editor-body" id="editorBody" rows="5" placeholder="描述（可选）">${escapeHTML(ed.body)}</textarea>
       <div class="editor-meta">
         ${useProgress ? `<label class="editor-inline"><input type="checkbox" id="editorPercent"${ed.percent ? ' checked' : ''}> 支持百分比</label>` : ''}
       </div>
@@ -874,6 +874,49 @@ function openProgressPopover(issueId, anchor) {
 function closeProgressPopover() {
   $('#progressPopover').classList.add('hidden');
   state.progressPopoverFor = null;
+}
+
+/* ---------------- 移动端：长按卡片操作菜单 ---------------- */
+
+let longPressTimer = null;
+let longPressFired = false;
+const LONG_PRESS_MS = 500;
+
+function cancelLongPress() {
+  clearTimeout(longPressTimer);
+  longPressTimer = null;
+  longPressFired = false;
+}
+
+function openCardMenu(card, x, y) {
+  const menu = $('#cardMenu');
+  const titleEl = card.querySelector('.card-title');
+  $('#cardMenuTitle').textContent = titleEl ? titleEl.textContent : '';
+  menu.dataset.cardId = card.dataset.id;
+  menu.style.left = Math.min(Math.max(x, 8), window.innerWidth - 170) + 'px';
+  menu.style.top = Math.min(Math.max(y, 8), window.innerHeight - 140) + 'px';
+  menu.classList.remove('hidden');
+}
+
+function closeCardMenu() {
+  $('#cardMenu').classList.add('hidden');
+  delete $('#cardMenu').dataset.cardId;
+}
+
+/* ---------------- 移动端：全屏文本输入 ---------------- */
+
+let fullEditorSource = null;
+
+function openFullEditor(textarea) {
+  fullEditorSource = textarea;
+  $('#fullEditorText').value = textarea.value;
+  $('#fullEditor').classList.remove('hidden');
+  $('#fullEditorText').focus();
+}
+
+function closeFullEditor() {
+  $('#fullEditor').classList.add('hidden');
+  fullEditorSource = null;
 }
 
 // 应用弹层中当前滑块值并关闭（点击弹层外关闭 = 确定；值与原来一致则不提交）
@@ -1452,7 +1495,68 @@ function bindEvents() {
     }
   });
 
+  // 移动端：长按待办卡片弹出操作菜单（编辑）
+  $('#main').addEventListener('touchstart', (e) => {
+    if (window.innerWidth > 720) return;
+    const card = e.target.closest('.task-card');
+    if (!card || card.classList.contains('editor-card')) return;
+    cancelLongPress();
+    const touch = e.touches[0];
+    longPressTimer = setTimeout(() => {
+      longPressFired = true;
+      openCardMenu(card, touch.clientX, touch.clientY);
+    }, LONG_PRESS_MS);
+  }, { passive: true });
+  $('#main').addEventListener('touchmove', cancelLongPress, { passive: true });
+  $('#main').addEventListener('touchcancel', cancelLongPress, { passive: true });
+  $('#main').addEventListener('touchend', (e) => {
+    if (longPressFired) e.preventDefault(); // 阻止长按后的合成 click
+    cancelLongPress();
+  }, { passive: false });
+  // 长按菜单：选择「编辑」进入编辑模式
+  $('#cardMenu').addEventListener('click', (e) => {
+    const item = e.target.closest('[data-card-menu]');
+    if (!item) return;
+    const cardId = $('#cardMenu').dataset.cardId;
+    closeCardMenu();
+    if (item.dataset.cardMenu === 'edit') {
+      const issue = state.issues.find((i) => i.id === cardId);
+      if (issue) openEditor(issue);
+    }
+  });
+
+  // 移动端：点击编辑器描述框进入全屏输入
   $('#main').addEventListener('click', (e) => {
+    if (window.innerWidth > 720) return;
+    const body = e.target.closest('#editorBody');
+    if (body) { e.preventDefault(); openFullEditor(body); }
+  });
+
+  // 移动端「更多」菜单：帮助 / 设置
+  $('#btnMore').addEventListener('click', () => {
+    $('#moreMenu').classList.toggle('hidden');
+  });
+  $('#moreMenu').addEventListener('click', (e) => {
+    const item = e.target.closest('[data-more]');
+    if (!item) return;
+    $('#moreMenu').classList.add('hidden');
+    if (item.dataset.more === 'help') openModal($('#helpModal'));
+    else if (item.dataset.more === 'settings') openSetupModal();
+  });
+
+  // 全屏文本输入：完成回填 / 取消
+  $('#fullEditorOk').addEventListener('click', () => {
+    if (fullEditorSource) {
+      fullEditorSource.value = $('#fullEditorText').value;
+      if (state.editor) state.editor.body = fullEditorSource.value;
+    }
+    closeFullEditor();
+  });
+  $('#fullEditorCancel').addEventListener('click', closeFullEditor);
+
+  $('#main').addEventListener('click', (e) => {
+    // 长按后的合成点击（touch 事件已 preventDefault，双保险忽略）
+    if (longPressFired) { longPressFired = false; return; }
     // 编辑器按钮
     const editorBtn = e.target.closest('[data-act="editor-save"],[data-act="editor-cancel"],[data-act="editor-archive-delete"]');
     if (editorBtn) {
@@ -1522,6 +1626,8 @@ function bindEvents() {
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#tagFilterDropdown')) $('#tagFilterMenu').classList.add('hidden');
     if (!e.target.closest('#repoSwitch')) $('#repoSwitchMenu').classList.add('hidden');
+    if (!e.target.closest('#moreMenu') && !e.target.closest('#btnMore')) $('#moreMenu').classList.add('hidden');
+    if (!e.target.closest('#cardMenu')) closeCardMenu();
     if (state.progressPopoverFor && !e.target.closest('#progressPopover') && !e.target.closest('[data-ring]')) {
       // 点击弹层外关闭 = 应用当前滑块值（100% 完成也在此刻生效；想放弃需手动调回原值）
       applyProgressPopover();
