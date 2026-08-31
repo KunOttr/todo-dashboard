@@ -864,8 +864,9 @@ function openProgressPopover(issueId, anchor) {
     </div>`;
   const pop = $('#progressPopover');
   const rect = anchor.getBoundingClientRect();
-  pop.style.left = Math.min(rect.left, window.innerWidth - 250) + 'px';
-  pop.style.top = (rect.bottom + 6) + 'px';
+  // 弹层位置钳制在视口内，避免窄屏/底部卡片时溢出屏幕
+  pop.style.left = Math.min(Math.max(rect.left, 8), Math.max(window.innerWidth - 250, 8)) + 'px';
+  pop.style.top = Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 130)) + 'px';
   pop.classList.remove('hidden');
   state.progressPopoverFor = issueId;
 }
