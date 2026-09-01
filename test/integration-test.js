@@ -70,6 +70,7 @@ const serverIssues = {
   },
 };
 function findLabelById(id) { return serverLabels.find((l) => l.id === id) || null; }
+function findLabelByName(name) { return serverLabels.find((l) => l.name === name) || null; }
 function issueToAPI(issue) {
   return {
     id: issue.id, number: issue.number, title: issue.title, body: issue.body,
@@ -110,6 +111,20 @@ async function apiCreateIssue(cfg, repoId, { title, body, labelIds }) {
 async function apiUpdateIssue(cfg, id, { title, body }) {
   log('updateIssue', [id, title]);
   if (serverIssues[id]) { serverIssues[id].title = title; serverIssues[id].body = body || ''; }
+  return serverIssues[id] ? issueToAPI(serverIssues[id]) : null;
+}
+async function apiSetIssueState(cfg, id, state) {
+  log('setIssueState', [id, state]);
+  const issue = serverIssues[id];
+  if (!issue) return null;
+  if (state === 'closed') {
+    if (issue.state !== 'CLOSED') log('closeIssue', id);
+    issue.state = 'CLOSED'; issue.closedAt = new Date().toISOString();
+  } else {
+    if (issue.state !== 'OPEN') log('reopenIssue', id);
+    issue.state = 'OPEN'; issue.closedAt = null;
+  }
+  return issueToAPI(issue);
 }
 async function apiCloseIssue(cfg, id) {
   log('closeIssue', id);
@@ -123,17 +138,79 @@ async function apiDeleteIssue(cfg, id) { log('deleteIssue', id); delete serverIs
 async function apiAddLabels(cfg, id, ids) {
   log('addLabels', [id, ids]);
   const issue = serverIssues[id];
-  if (!issue) return;
+  if (!issue) return [];
   for (const lid of ids) {
     const label = findLabelById(lid);
     if (label && !issue.labels.some((l) => l.id === lid)) issue.labels.push(label);
   }
+  return issue.labels.slice();
 }
 async function apiRemoveLabels(cfg, id, ids) {
   log('removeLabels', [id, ids]);
   const issue = serverIssues[id];
-  if (!issue) return;
+  if (!issue) return [];
   issue.labels = issue.labels.filter((l) => !ids.includes(l.id));
+  return issue.labels.slice();
+}
+/* ---- 复合操作桩（execOp 优化后新增） ---- */
+async function apiGetInitial(cfg) {
+  log('initial', cfg);
+  return { repoId: 'R1', labels: serverLabels.slice(), issues: Object.values(serverIssues).map(issueToAPI) };
+}
+async function apiApplyProgress(cfg, apiId, value, oldProgressLabels, targetLabelId) {
+  const issue = serverIssues[apiId];
+  if (!issue) return { labels: [], state: null, closedAt: null, createdLabel: null };
+  const old = oldProgressLabels || [];
+  if (old.length) {
+    log('removeLabels', [apiId, old.map((l) => l.id)]);
+    issue.labels = issue.labels.filter((l) => !old.some((o) => o.id === l.id));
+  }
+  const targetName = '进度:' + value + '%';
+  let label = targetLabelId ? findLabelById(targetLabelId) : null;
+  let createdLabel = null;
+  if (!label) {
+    label = findLabelByName(targetName);
+    if (!label) {
+      log('createLabel', [targetName, '0E8A16']);
+      label = { id: 'NL' + serverLabels.length, name: targetName, color: '0E8A16' };
+      serverLabels.push(label);
+      createdLabel = label;
+    }
+  }
+  log('addLabels', [apiId, [label.id]]);
+  if (!issue.labels.some((l) => l.id === label.id)) issue.labels.push(label);
+  if (value >= 100) {
+    if (issue.state !== 'CLOSED') log('closeIssue', apiId);
+    issue.state = 'CLOSED'; issue.closedAt = new Date().toISOString();
+  } else {
+    if (issue.state !== 'OPEN') log('reopenIssue', apiId);
+    issue.state = 'OPEN'; issue.closedAt = null;
+  }
+  return { labels: issue.labels.slice(), state: issue.state, closedAt: issue.closedAt, createdLabel };
+}
+async function apiApplyTags(cfg, apiId, addIds, removeIds) {
+  const issue = serverIssues[apiId];
+  if (!issue) return [];
+  addIds = addIds || []; removeIds = removeIds || [];
+  if (addIds.length) {
+    log('addLabels', [apiId, addIds]);
+    for (const lid of addIds) {
+      const label = findLabelById(lid);
+      if (label && !issue.labels.some((l) => l.id === lid)) issue.labels.push(label);
+    }
+  }
+  if (removeIds.length) {
+    log('removeLabels', [apiId, removeIds]);
+    issue.labels = issue.labels.filter((l) => !removeIds.includes(l.id));
+  }
+  return issue.labels.slice();
+}
+async function apiBatchDeleteLabels(cfg, labelIds) {
+  log('batchDeleteLabels', labelIds);
+  for (const id of labelIds) {
+    const i = serverLabels.findIndex((l) => l.id === id);
+    if (i >= 0) serverLabels.splice(i, 1);
+  }
 }
 
 // ---- 装载源码 ----
@@ -172,9 +249,10 @@ assert(state.filterOptionsOpen === false && $('#filterOptions').classList.contai
 
 assert($('#btnSync').classList.contains('hidden'), '无改动时同步按钮隐藏');
 
-// 卡片：标签/归档/删除移入编辑模式
+// 卡片：含「+ 标签」入口；归档/删除移入编辑模式
 let ch = cardHTML(state.issues[0]);
-assert(ch.indexOf('data-act="tags"') < 0 && ch.indexOf('data-act="archive"') < 0 && ch.indexOf('data-act="delete"') < 0, '卡片不再含标签/归档/删除按钮');
+assert(ch.indexOf('data-act="tags"') >= 0, '卡片保留「+ 标签」按钮');
+assert(ch.indexOf('data-act="archive"') < 0 && ch.indexOf('data-act="delete"') < 0, '卡片不再含归档/删除按钮');
 assert(ch.indexOf('data-act="edit"') >= 0, '卡片保留编辑按钮');
 
 // 编辑模式：无已完成按钮、按仓库百分比支持显示支持百分比、归档/删除合并为单按钮
@@ -278,8 +356,8 @@ await flush();
 assert(calls.filter((c) => c.name === 'removeLabels' && c.args[1].some((id) => findLabelById(id) && isProgressLabel(findLabelById(id).name))).length >= 1, 'flush 移除进度标签');
 assert(!serverIssues['I1'].labels.some((l) => isProgressLabel(l.name)), '服务端进度标签已移除');
 
-// 场景 1：仓库连接失败
-apiGetRepo = async () => { throw new Error('网络错误'); };
+// 场景 1：仓库连接失败（connect 走合并查询 apiGetInitial，替换该桩）
+apiGetInitial = async () => { throw new Error('网络错误'); };
 state.config.repos = [{ owner: 'o', repo: 'r', token: 't' }];
 state.config.activeIndex = 0;
 await connect();
@@ -308,6 +386,68 @@ assert($('#blockOpen').classList.contains('hidden'), '无仓库状态隐藏待�
 assert($('#btnTagsManage').classList.contains('hidden'), '无仓库隐藏标签管理按钮');
 assert($('#repoSwitchBtn').disabled === true, '无仓库仓库按钮禁用');
 assert($('#repoSwitchBtn').classList.contains('disabled'), '无仓库仓库按钮灰色');
+
+// ---- API 调用优化断言 ----
+// 恢复配置与数据，重新连接（走合并查询 apiGetInitial）
+state.config.repos = [{ owner: 'o', repo: 'r', token: 't', provider: 'github', useProgress: false }];
+state.config.activeIndex = 0;
+// 场景 1 覆盖过 apiGetInitial，恢复原始桩
+apiGetInitial = async (cfg) => {
+  log('initial', cfg);
+  return { repoId: 'R1', labels: serverLabels.slice(), issues: Object.values(serverIssues).map(issueToAPI) };
+};
+calls = [];
+await connect();
+assert(calls.filter((c) => c.name === 'initial').length === 1, 'connect 使用合并查询 apiGetInitial');
+assert(calls.filter((c) => c.name === 'repo' || c.name === 'labels' || c.name === 'issues').length === 0, 'connect 不再分别调用 repo/labels/issues');
+assert(state.issues.some((i) => i.id === 'I1') && state.labels.some((l) => l.name === '归档'), '合并查询后数据正确');
+
+// toggleDone：不再查 issueBasics，直接幂等 close/reopen
+calls = [];
+const i1 = state.issues.find((i) => i.id === 'I1');
+optimisticToggleDone(i1);
+await flush();
+assert(calls.filter((c) => c.name === 'setIssueState' || c.name === 'closeIssue').length >= 1, 'toggleDone 触发状态切换');
+assert(calls.filter((c) => c.name === 'issueBasics').length === 0, 'toggleDone 不再查 issueBasics');
+assert(serverIssues['I1'].state === 'CLOSED', '服务端已关闭');
+
+// setProgress：不查 issueBasics（用 op 记录的旧标签），目标标签惰性创建
+calls = [];
+state.config.repos[0].useProgress = true;
+optimisticSetProgress(i1, 70);
+await flush();
+assert(calls.filter((c) => c.name === 'issueBasics').length === 0, 'setProgress 不再查 issueBasics');
+assert(serverIssues['I1'].labels.some((l) => l.name === '进度:70%'), '惰性创建并附加进度:70% 标签');
+assert(serverIssues['I1'].state === 'OPEN', '70% 服务端为进行中');
+
+// flush 成功后不再全量刷新（增量同步）
+calls = [];
+state.editor = { mode: 'edit', targetId: 'I1', title: '任务A-改', body: 'x', percent: false, progress: 0, tags: new Set() };
+saveEditor();
+assert(state.pendingOps.some((o) => o.kind === 'update'), '入队 update');
+await flush();
+assert(calls.filter((c) => c.name === 'updateIssue').length === 1, 'flush 只发 updateIssue');
+assert(calls.filter((c) => c.name === 'labels' || c.name === 'issues').length === 0, 'flush 成功后不再全量刷新');
+assert(serverIssues['I1'].title === '任务A-改', '服务端标题已更新');
+
+// bug 修复：新建 100% 进度待办 → 服务端真正 CLOSED
+calls = [];
+state.editor = { mode: 'new', targetId: null, title: '完成即关闭', body: '', percent: true, progress: 100, done: false, tags: new Set() };
+saveEditor();
+await flush();
+assert(serverIssues['I-NEW'].state === 'CLOSED', '新建 100% 进度待办服务端已关闭（bug 修复）');
+assert(serverIssues['I-NEW'].labels.some((l) => l.name === '进度:100%'), '新建 100% 进度待办服务端挂进度标签');
+state.editor = null;
+
+// 批量删除标签：一次 apiBatchDeleteLabels
+serverLabels.push({ id: 'LT1', name: '待删', color: '111111' });
+state.labels.push({ id: 'LT1', name: '待删', color: '111111' });
+calls = [];
+await deleteTagsNow(['待删']);
+assert(calls.filter((c) => c.name === 'batchDeleteLabels').length === 1, '批量删除走 apiBatchDeleteLabels');
+assert(calls.filter((c) => c.name === 'deleteLabel').length === 0, '不再逐个 deleteLabel');
+assert(!state.labels.some((l) => l.name === '待删') && !serverLabels.some((l) => l.name === '待删'), '标签已从本地与服务端移除');
+
 console.log('--- ALL TESTS DONE ---');
 `;
 
