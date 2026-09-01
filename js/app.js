@@ -215,23 +215,14 @@ function renderAppState() {
 
 /* ---------------- 数据加载 ---------------- */
 
+/* 系统标签只确保「归档」；进度标签惰性创建（applyProgress 时不存在才创建，省首次加载的预创建请求） */
 async function ensureSpecialLabels(cfg, labels) {
-  const existing = new Set(labels.map((l) => l.name));
-  const need = [APP_CONFIG.ARCHIVE_TAG];
-  if (cfg.useProgress) {
-    for (let v = 0; v <= APP_CONFIG.PROGRESS_MAX; v += APP_CONFIG.PROGRESS_STEP) {
-      need.push(APP_CONFIG.PROGRESS_PREFIX + v + '%');
-    }
-  }
-  for (const n of need) {
-    if (existing.has(n)) continue;
-    try {
-      const color = n === APP_CONFIG.ARCHIVE_TAG ? APP_CONFIG.LABEL_COLORS.archive : APP_CONFIG.LABEL_COLORS.progress;
-      const l = await apiCreateLabel(cfg, cfg.repoId, n, color);
-      labels.push(l);
-    } catch (e) {
-      console.warn('创建系统标签失败: ' + n, e);
-    }
+  if (labels.some((l) => l.name === APP_CONFIG.ARCHIVE_TAG)) return labels;
+  try {
+    const l = await apiCreateLabel(cfg, cfg.repoId, APP_CONFIG.ARCHIVE_TAG, APP_CONFIG.LABEL_COLORS.archive);
+    labels.push(l);
+  } catch (e) {
+    console.warn('创建系统标签失败: ' + APP_CONFIG.ARCHIVE_TAG, e);
   }
   return labels;
 }
@@ -245,11 +236,11 @@ async function connect() {
   }
   setLoading(true);
   try {
-    const repo = await apiGetRepo(cfg);
-    cfg.repoId = repo.id;
-    const labels = await apiGetLabels(cfg);
-    state.labels = await ensureSpecialLabels(cfg, labels);
-    state.issues = await apiGetIssues(cfg);
+    // 合并查询：repo id + labels + issues 一次拿全（GraphQL 单 query；Gitea 并行）
+    const data = await apiGetInitial(cfg);
+    cfg.repoId = data.repoId;
+    state.labels = await ensureSpecialLabels(cfg, data.labels);
+    state.issues = data.issues;
     state.connState = 'ok';
     state.connError = '';
     state.repoAuthError = false;
@@ -280,6 +271,11 @@ async function refresh() {
 function queueOp(op) {
   // 同类操作按 (kind,id) 去重，只保留最新一次
   if (['update', 'setProgress', 'toggleDone', 'setTags', 'archive', 'removeProgress'].includes(op.kind)) {
+    // 连续调整进度/移除进度：继承旧 op 记录的最早进度标签，保证移除的是服务端真实旧标签
+    if (op.kind === 'setProgress' || op.kind === 'removeProgress') {
+      const prev = state.pendingOps.find((o) => o.kind === op.kind && o.id === op.id);
+      if (prev && prev.oldProgressLabels && !op.oldProgressLabels) op.oldProgressLabels = prev.oldProgressLabels;
+    }
     state.pendingOps = state.pendingOps.filter((o) => !(o.kind === op.kind && o.id === op.id));
   }
   // 新建后立即删除：撤销 create 操作
@@ -297,56 +293,64 @@ function scheduleAutoSave() {
   renderSyncButton();
 }
 
-async function applyProgressLabel(cfg, apiId, value, basics) {
-  if (!basics) basics = await apiGetIssueBasics(cfg, apiId);
-  const cur = (basics.labels || []).filter((l) => isProgressLabel(l.name));
-  if (cur.length) await apiRemoveLabels(cfg, apiId, cur.map((l) => l.id));
-  const targetName = APP_CONFIG.PROGRESS_PREFIX + value + '%';
-  let label = state.labels.find((l) => l.name === targetName);
-  if (!label) {
-    label = await apiCreateLabel(cfg, cfg.repoId, targetName, APP_CONFIG.LABEL_COLORS.progress);
-    state.labels.push(label);
-  }
-  await apiAddLabels(cfg, apiId, [label.id]);
-  return basics;
-}
-
 async function execOp(op, idMap) {
   const cfg = currentRepoConfig();
   if (!cfg) throw new Error('未配置仓库');
   const apiId = op.kind === 'create' ? null : (idMap[op.id] || op.id);
+  const patchIssue = (id, patch) => {
+    state.issues = state.issues.map((i) => (i.id === id ? Object.assign({}, i, patch) : i));
+  };
   switch (op.kind) {
     case 'create': {
       const labelIds = op.labels.map((n) => state.labels.find((l) => l.name === n)).filter(Boolean).map((l) => l.id);
       const issue = await apiCreateIssue(cfg, cfg.repoId, { title: op.title, body: op.body, labelIds });
-      if (op.percent) await applyProgressLabel(cfg, issue.id, op.progress);
-      if (op.done) await apiCloseIssue(cfg, issue.id);
       idMap[op.tempId] = issue.id;
+      if (op.percent) {
+        const targetName = APP_CONFIG.PROGRESS_PREFIX + op.progress + '%';
+        let targetLabel = state.labels.find((l) => l.name === targetName);
+        const result = await apiApplyProgress(cfg, issue.id, op.progress, [], targetLabel ? targetLabel.id : null);
+        if (!targetLabel && result.createdLabel) state.labels.push(result.createdLabel);
+        // 状态整合（100% 关闭）：修复「本地显示已完成但服务端 OPEN」的不一致
+        if (result.state) { issue.state = result.state; issue.closedAt = result.closedAt; }
+        if (result.labels) issue.labels = { nodes: result.labels };
+      }
+      if (op.done && !(op.percent && op.progress >= 100)) await apiCloseIssue(cfg, issue.id);
+      // 用服务端返回替换本地乐观 tempId issue（同步增量，无需全量刷新）
+      state.issues = state.issues.map((i) => (i.id === op.tempId ? issue : i));
       if (state.editor && state.editor.mode === 'new' && state.editor.targetId === op.tempId) {
         state.editor.targetId = issue.id; // 刷新后编辑卡片仍指向该待办
       }
       break;
     }
-    case 'update':
-      await apiUpdateIssue(cfg, apiId, { title: op.title, body: op.body });
+    case 'update': {
+      const updated = await apiUpdateIssue(cfg, apiId, { title: op.title, body: op.body });
+      if (updated) patchIssue(apiId, { title: updated.title, body: updated.body, url: updated.url });
       break;
+    }
     case 'toggleDone': {
-      const basics = await apiGetIssueBasics(cfg, apiId);
-      if (op.done && basics.state !== 'CLOSED') await apiCloseIssue(cfg, apiId);
-      if (!op.done && basics.state !== 'OPEN') await apiReopenIssue(cfg, apiId);
+      // close/reopen 在两端均幂等，直接调用，无需先查状态
+      const updated = await apiSetIssueState(cfg, apiId, op.done ? 'closed' : 'open');
+      if (updated) patchIssue(apiId, { state: updated.state, closedAt: updated.closedAt });
       break;
     }
     case 'setProgress': {
-      const basics = await applyProgressLabel(cfg, apiId, op.value);
-      // 百分比与完成整合（以服务端状态为准）：100% 完成，<100% 进行中
-      if (op.value >= 100 && basics.state !== 'CLOSED') await apiCloseIssue(cfg, apiId);
-      else if (op.value < 100 && basics.state !== 'OPEN') await apiReopenIssue(cfg, apiId);
+      const targetName = APP_CONFIG.PROGRESS_PREFIX + op.value + '%';
+      let targetLabel = state.labels.find((l) => l.name === targetName);
+      const result = await apiApplyProgress(cfg, apiId, op.value, op.oldProgressLabels || [], targetLabel ? targetLabel.id : null);
+      if (!targetLabel && result.createdLabel) state.labels.push(result.createdLabel);
+      // 百分比与完成整合：100% 关闭，<100% 重开（服务端为准）
+      if (result.labels) patchIssue(apiId, { labels: { nodes: result.labels } });
+      if (result.state) patchIssue(apiId, { state: result.state, closedAt: result.closedAt });
       break;
     }
     case 'removeProgress': {
-      const basics = await apiGetIssueBasics(cfg, apiId);
-      const cur = (basics.labels || []).filter((l) => isProgressLabel(l.name));
-      if (cur.length) await apiRemoveLabels(cfg, apiId, cur.map((l) => l.id));
+      let old = op.oldProgressLabels || [];
+      if (!old.length) {
+        // 兼容未记录旧标签的 op：回退查一次服务端进度标签
+        const basics = await apiGetIssueBasics(cfg, apiId);
+        old = (basics.labels || []).filter((l) => isProgressLabel(l.name));
+      }
+      if (old.length) await apiRemoveLabels(cfg, apiId, old.map((l) => l.id));
       break;
     }
     case 'setTags': {
@@ -354,15 +358,17 @@ async function execOp(op, idMap) {
       const baseline = new Set(op.baseline);
       const add = state.labels.filter((l) => !isArchiveLabel(l.name) && !baseline.has(l.name) && target.has(l.name)).map((l) => l.id);
       const remove = state.labels.filter((l) => !isArchiveLabel(l.name) && baseline.has(l.name) && !target.has(l.name)).map((l) => l.id);
-      if (add.length) await apiAddLabels(cfg, apiId, add);
-      if (remove.length) await apiRemoveLabels(cfg, apiId, remove);
+      const labels = await apiApplyTags(cfg, apiId, add, remove);
+      if (labels && labels.length) patchIssue(apiId, { labels: { nodes: labels } });
       break;
     }
     case 'archive': {
       const archLabel = state.labels.find((l) => l.name === APP_CONFIG.ARCHIVE_TAG);
       if (!archLabel) throw new Error('「归档」标签不存在');
-      if (op.archived) await apiAddLabels(cfg, apiId, [archLabel.id]);
-      else await apiRemoveLabels(cfg, apiId, [archLabel.id]);
+      const labels = op.archived
+        ? await apiAddLabels(cfg, apiId, [archLabel.id])
+        : await apiRemoveLabels(cfg, apiId, [archLabel.id]);
+      if (Array.isArray(labels) && labels.length) patchIssue(apiId, { labels: { nodes: labels } });
       break;
     }
     case 'delete':
@@ -400,7 +406,8 @@ async function flush() {
       if (failedIdx > 0) await refresh();
       toast('同步失败：' + failedMsg, true);
     } else {
-      await refresh();
+      // 增量同步：execOp 已用服务端返回值更新本地 state，无需全量刷新（省 2+N 次请求）
+      render();
       toast('已同步');
     }
   } catch (e) {
@@ -452,15 +459,20 @@ function optimisticToggleDone(issue) {
 function optimisticSetProgress(issue, value) {
   const node = mkProgressLabel(value);
   const idx = issue.labels.nodes.findIndex((l) => isProgressLabel(l.name));
-  if (idx >= 0) issue.labels.nodes[idx] = node;
-  else issue.labels.nodes.push(node);
+  let oldProgressLabels = null;
+  if (idx >= 0) {
+    // 只记录服务端真实标签 id（本地乐观创建的 local-progress 无服务端 id，传给移除接口会 422/报错）
+    const old = issue.labels.nodes[idx];
+    if (!isTempId(old.id)) oldProgressLabels = [old];
+    issue.labels.nodes[idx] = node;
+  } else issue.labels.nodes.push(node);
   if (value >= 100) {
     if (issue.state !== 'CLOSED') { issue.state = 'CLOSED'; issue.closedAt = new Date().toISOString(); }
   } else if (issue.state === 'CLOSED') {
     issue.state = 'OPEN';
     issue.closedAt = null;
   }
-  queueOp({ kind: 'setProgress', id: issue.id, value });
+  queueOp({ kind: 'setProgress', id: issue.id, value, oldProgressLabels });
 }
 
 function optimisticSetTags(issue, targetNames) {
@@ -837,8 +849,9 @@ function saveEditor() {
     if (wantPercent && !meta0.percent) {
       optimisticSetProgress(issue, ed.progress);
     } else if (useProgress && !wantPercent && meta0.percent) {
+      const oldProgressLabels = issue.labels.nodes.filter((l) => isProgressLabel(l.name) && !isTempId(l.id));
       issue.labels.nodes = issue.labels.nodes.filter((l) => !isProgressLabel(l.name));
-      queueOp({ kind: 'removeProgress', id: issue.id });
+      queueOp({ kind: 'removeProgress', id: issue.id, oldProgressLabels });
     } else if (wantPercent && meta0.percent && ed.progress !== meta0.progress) {
       optimisticSetProgress(issue, ed.progress);
     }
@@ -1041,16 +1054,18 @@ async function addNewTag() {
 async function deleteTagsNow(names) {
   const cfg = currentRepoConfig();
   if (!cfg) return;
-  for (const name of names) {
-    const label = state.labels.find((l) => l.name === name);
-    if (!label) continue;
-    try {
-      await apiDeleteLabel(cfg, label.id);
-      state.labels = state.labels.filter((l) => l.id !== label.id);
-      state.filters.selectedTags = state.filters.selectedTags.filter((n) => n !== label.name);
-    } catch (e) {
-      toast('删除「' + name + '」失败: ' + e.message, true);
-    }
+  const labels = names
+    .map((name) => state.labels.find((l) => l.name === name))
+    .filter(Boolean);
+  if (!labels.length) return;
+  try {
+    await apiBatchDeleteLabels(cfg, labels.map((l) => l.id));
+    const removedIds = new Set(labels.map((l) => l.id));
+    const removedNames = new Set(labels.map((l) => l.name));
+    state.labels = state.labels.filter((l) => !removedIds.has(l.id));
+    state.filters.selectedTags = state.filters.selectedTags.filter((n) => !removedNames.has(n));
+  } catch (e) {
+    toast('删除标签失败: ' + e.message, true);
   }
   await refresh();
 }
@@ -1293,8 +1308,9 @@ function saveRepoCard(idx) {
     // 确认关闭：清除当前活动仓库所有待办的百分比标签
     for (const i of state.issues) {
       if (i.labels.nodes.some((l) => isProgressLabel(l.name))) {
+        const oldProgressLabels = i.labels.nodes.filter((l) => isProgressLabel(l.name) && !isTempId(l.id));
         i.labels.nodes = i.labels.nodes.filter((l) => !isProgressLabel(l.name));
-        queueOp({ kind: 'removeProgress', id: i.id });
+        queueOp({ kind: 'removeProgress', id: i.id, oldProgressLabels });
       }
     }
     render();
