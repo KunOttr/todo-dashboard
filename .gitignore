@@ -8,3 +8,6 @@ dist/
 .DS_Store
 *.log
 Thumbs.db
+
+# 本机专用文件（分支计划 / 本机规则，不入库）
+*.local.md
