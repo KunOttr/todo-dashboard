@@ -690,11 +690,41 @@ function cardHTML(issue) {
         ${meta.tags.length ? `<span class="card-tags">${tagsHTML}</span>` : ''}
         ${closed && issue.closedAt ? `<span class="card-time">完成 ${fmtDate(issue.closedAt)}</span>` : ''}
       </div>
+      ${linkedPrsHTML(issue)}
     </div>
     <div class="card-actions">
       <button class="btn-link" data-act="edit">编辑</button>
     </div>
   </article>`;
+}
+
+/* 关联 PR 徽章：把「这条待办对应的修复 PR 及其状态 / 合并提交」直接挂在卡片上，
+   便于把看板当 bugfix 任务面板用（一眼看出哪些问题有代码在推进 / 已修复）。
+   数据来源是 GitHub 专属字段 —— Gitea 仓库不会返回该字段（返回空数组），此处整块不渲染，
+   不做跨平台降级模拟；旧版 GitHub Enterprise 上字段不可用时同样静默不展示。 */
+const PR_STATE_TEXT = { OPEN: '待合并', MERGED: '已合并', CLOSED: '已关闭' };
+const PR_MAX_SHOWN = 3; // 与查询里的 first 无关，最多展示几个（其余折叠为 +N）
+
+function linkedPrsHTML(issue) {
+  const conn = issue && issue.closedByPullRequestsReferences;
+  const all = (conn && conn.nodes) || [];
+  if (!all.length) return '';
+  const total = conn.totalCount != null ? conn.totalCount : all.length;
+  const prs = all.slice(0, PR_MAX_SHOWN);
+
+  const chips = prs.map((pr) => {
+    const state = pr.isDraft ? 'draft' : String(pr.state || 'OPEN').toLowerCase();
+    const text = pr.isDraft ? '草稿' : (PR_STATE_TEXT[pr.state] || '待合并');
+    // 合并提交：squash / merge 合并后指向基准分支上的提交（rebase 合并可能为空）
+    const sha = (pr.mergeCommit && pr.mergeCommit.abbreviatedOid) || '';
+    const tip = 'PR #' + pr.number + ' ' + (pr.title || '') + (pr.headRefName ? '（' + pr.headRefName + '）' : '');
+    return `<a class="pr-chip pr-${state}" href="${escapeHTML(pr.url)}" target="_blank" rel="noopener"
+        title="${escapeHTML(tip)}"><span class="pr-num">#${pr.number}</span><span class="pr-state">${text}</span>${
+      sha ? `<code class="pr-sha">${escapeHTML(sha)}</code>` : ''}</a>`;
+  }).join('');
+
+  const more = total > prs.length ? `<span class="pr-more" title="另有 ${total - prs.length} 个关联 PR">+${total - prs.length}</span>` : '';
+  return `<div class="card-prs">${chips}${more}</div>`;
 }
 
 function checkBtnHTML(closed) {

@@ -99,6 +99,55 @@ const ISSUE_FIELDS = `
   labels(first: 100) { nodes { id name color } }
 `;
 
+/* 关联 PR 字段：GitHub / GitHub Enterprise 专属。Gitea 无 Issue↔PR 反向关联能力，
+   故不对 Gitea 请求（其 Issues 接口连 PR 本身都会在 apiGetIssues 里被过滤掉）。
+   内联进原有的 issue 分页查询，不额外增加请求数。
+
+   注意 includeClosedPrs：Issue.closedByPullRequestsReferences 的该参数默认 false，
+   只会返回「仍处于打开状态」的 PR —— 若不显式传 true，已合并的修复 PR 会全部查不到，
+   待办会被错误地显示成「无关联 PR」。 */
+const ISSUE_PR_FIELDS = `
+  closedByPullRequestsReferences(first: 3, includeClosedPrs: true) {
+    totalCount
+    nodes {
+      number
+      title
+      state
+      isDraft
+      merged
+      mergedAt
+      url
+      headRefName
+      mergeCommit { abbreviatedOid }
+    }
+  }
+`;
+
+/* PR 关联字段是较新的 schema 能力，旧版 GitHub Enterprise Server 上不存在。
+   若直接查询会让整个 issue 列表请求报错、看板加载失败，因此按 GraphQL 端点记住可用性：
+   一旦某端点报「字段不存在」，该端点后续一律降级为不取该字段（该区块不展示，其余功能不受影响），
+   也避免同一错误反复重试。 */
+const prFieldSupport = new Map(); // GraphQL 端点 -> boolean
+
+function prFieldsAvailable(config) {
+  return prFieldSupport.get(githubGraphqlEndpoint(config)) !== false;
+}
+
+function isMissingPrFieldError(msg) {
+  return /closedByPullRequestsReferences/i.test(String(msg || ''));
+}
+
+function issuesQuery(fields) {
+  return `query($owner:String!,$name:String!,$cursor:String){
+    repository(owner:$owner,name:$name){
+      issues(first:100, after:$cursor, orderBy:{field:CREATED_AT, direction:DESC}){
+        pageInfo{ hasNextPage endCursor }
+        nodes{ ${fields} }
+      }
+    }
+  }`;
+}
+
 /* Gitea issue → 内部结构（内部 id 使用 issue 序号 index，REST 操作都基于它） */
 function giteaIssueToInternal(issue) {
   const labels = (issue.labels || []).map((l) => ({
@@ -177,18 +226,23 @@ async function apiGetIssues(config) {
   let cursor = null;
   let guard = 0;
   while (true) {
-    const data = await gql(
-      config,
-      `query($owner:String!,$name:String!,$cursor:String){
-        repository(owner:$owner,name:$name){
-          issues(first:100, after:$cursor, orderBy:{field:CREATED_AT, direction:DESC}){
-            pageInfo{ hasNextPage endCursor }
-            nodes{ ${ISSUE_FIELDS} }
-          }
-        }
-      }`,
-      { owner: config.owner, name: config.repo, cursor }
-    );
+    const withPr = prFieldsAvailable(config);
+    let data;
+    try {
+      data = await gql(
+        config,
+        issuesQuery(withPr ? ISSUE_FIELDS + ISSUE_PR_FIELDS : ISSUE_FIELDS),
+        { owner: config.owner, name: config.repo, cursor }
+      );
+    } catch (e) {
+      // 旧版 GHE 缺少 PR 关联字段：降级重试一次，避免整个看板加载失败
+      if (withPr && isMissingPrFieldError(e.message)) {
+        prFieldSupport.set(githubGraphqlEndpoint(config), false);
+        data = await gql(config, issuesQuery(ISSUE_FIELDS), { owner: config.owner, name: config.repo, cursor });
+      } else {
+        throw e;
+      }
+    }
     if (!data.repository) {
       throw new Error('仓库不存在或没有访问权限，请检查 owner / 仓库名 / Token');
     }

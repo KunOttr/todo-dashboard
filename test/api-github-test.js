@@ -10,6 +10,14 @@ const issue = {
   id: 'G1', number: 1, title: '任务A', body: '描述', state: 'OPEN',
   createdAt: '2026-08-01T08:00:00Z', closedAt: null, url: 'https://github.com/o/r/issues/1',
   labels: { nodes: [{ id: 'L1', name: 'bug', color: 'd73a4a' }] },
+  closedByPullRequestsReferences: {
+    totalCount: 1,
+    nodes: [{
+      number: 7, title: '修复 A', state: 'MERGED', isDraft: false, merged: true,
+      mergedAt: '2026-08-02T00:00:00Z', url: 'https://github.com/o/r/pull/7',
+      headRefName: 'fix/a', mergeCommit: { abbreviatedOid: 'abc1234' },
+    }],
+  },
 };
 
 async function fakeFetch(url, init) {
@@ -17,6 +25,12 @@ async function fakeFetch(url, init) {
   record(body, url);
   const { query } = body ? JSON.parse(body) : {};
   const json = (data) => ({ ok: true, status: 200, async json() { return { data }; }, async text() { return JSON.stringify({ data }); } });
+  const jsonErr = (errors) => ({ ok: true, status: 200, async json() { return { errors }; }, async text() { return JSON.stringify({ errors }); } });
+
+  // 模拟旧版 GitHub Enterprise：schema 上没有 PR 关联字段
+  if (url.indexOf('old-ghe.example.com') >= 0 && query.includes('closedByPullRequestsReferences')) {
+    return jsonErr([{ message: "Field 'closedByPullRequestsReferences' doesn't exist on type 'Issue'" }]);
+  }
 
   if (query.includes('repository(') && query.includes('issues(')) {
     return json({ repository: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [issue] } } });
@@ -88,6 +102,13 @@ assert(issues.length === 1, 'apiGetIssues 数量');
 assert(issues[0].id === 'G1' && issues[0].number === 1 && issues[0].state === 'OPEN', 'apiGetIssues 字段完整');
 assert(issues[0].labels.nodes[0].name === 'bug', 'apiGetIssues labels');
 
+// 关联 PR 字段：内联进原有列表查询（不增加请求数），且 includeClosedPrs 必须显式传 true
+const issuesReq = requests.find((r) => r && r.query && r.query.includes('issues('));
+assert(!!issuesReq && issuesReq.query.includes('closedByPullRequestsReferences(first: 3, includeClosedPrs: true)'), '列表查询内联 PR 关联字段且 includeClosedPrs=true');
+assert(requests.filter((r) => r && r.query && r.query.includes('issues(')).length === 1, '关联 PR 数据未拆成额外请求（仍为 1 次列表请求）');
+assert(issues[0].closedByPullRequestsReferences.nodes[0].number === 7, '关联 PR 数据随列表一起返回');
+assert(issues[0].closedByPullRequestsReferences.nodes[0].mergeCommit.abbreviatedOid === 'abc1234', '关联 PR 带合并提交短 hash');
+
 const basics = await apiGetIssueBasics(cfg, 'G1');
 assert(basics.state === 'OPEN' && basics.labels.length === 1, 'apiGetIssueBasics');
 
@@ -116,6 +137,23 @@ await apiGetRepo(gheCfg);
 assert(urls[urls.length - 1] === 'https://ghe.example.com/api/graphql', 'GHE 请求发往 baseUrl/api/graphql');
 const gheReq = requests[requests.length - 1];
 assert(gheReq && gheReq.variables.owner === 'o', 'GHE 请求变量正确');
+
+// 旧版 GHE 缺少 PR 关联字段 → 自动降级重试一次，看板仍可用（该区块静默不展示）
+const oldCfg = { ...cfg, baseUrl: 'https://old-ghe.example.com' };
+requests.length = 0;
+const oldIssues = await apiGetIssues(oldCfg);
+assert(oldIssues.length === 1 && oldIssues[0].id === 'G1', '旧版 GHE 缺失 PR 字段时仍能取回 issue 列表');
+assert(requests.length === 2, '降级只重试一次（共 2 次请求）');
+assert(requests[0].query.includes('closedByPullRequestsReferences'), '降级前先尝试请求 PR 关联字段');
+assert(requests[1].query.indexOf('closedByPullRequestsReferences') < 0, '降级后不再请求 PR 关联字段');
+// 端点级缓存：同一端点后续调用直接走降级，不重复失败
+requests.length = 0;
+await apiGetIssues(oldCfg);
+assert(requests.length === 1 && requests[0].query.indexOf('closedByPullRequestsReferences') < 0, '同一端点复用降级结论，不重复失败');
+// 其它端点不受影响
+requests.length = 0;
+const pubIssues = await apiGetIssues(cfg);
+assert(pubIssues[0].closedByPullRequestsReferences.nodes.length === 1, '降级不影响其它端点的 PR 关联数据');
 
 // HTTPS 页面请求 HTTP GHE → 混合内容提示
 global.window = { location: { protocol: 'https:' } };

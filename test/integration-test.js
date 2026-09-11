@@ -67,6 +67,14 @@ const serverIssues = {
     id: 'I1', number: 1, title: '任务A', body: '', state: 'OPEN',
     createdAt: '2026-08-01T08:00:00Z', closedAt: null, url: 'https://x/1',
     labels: [{ id: 'L1', name: '工作', color: '0969DA' }],
+    closedByPullRequestsReferences: {
+      totalCount: 1,
+      nodes: [{
+        number: 7, title: '修复 A', state: 'MERGED', isDraft: false, merged: true,
+        mergedAt: '2026-08-02T00:00:00Z', url: 'https://github.com/o/r/pull/7',
+        headRefName: 'fix/a', mergeCommit: { abbreviatedOid: 'abc1234' },
+      }],
+    },
   },
 };
 function findLabelById(id) { return serverLabels.find((l) => l.id === id) || null; }
@@ -75,6 +83,7 @@ function issueToAPI(issue) {
     id: issue.id, number: issue.number, title: issue.title, body: issue.body,
     state: issue.state, createdAt: issue.createdAt, closedAt: issue.closedAt, url: issue.url,
     labels: { nodes: issue.labels.slice() },
+    closedByPullRequestsReferences: issue.closedByPullRequestsReferences || { totalCount: 0, nodes: [] },
   };
 }
 
@@ -176,6 +185,30 @@ assert($('#btnSync').classList.contains('hidden'), '无改动时同步按钮隐�
 let ch = cardHTML(state.issues[0]);
 assert(ch.indexOf('data-act="tags"') < 0 && ch.indexOf('data-act="archive"') < 0 && ch.indexOf('data-act="delete"') < 0, '卡片不再含标签/归档/删除按钮');
 assert(ch.indexOf('data-act="edit"') >= 0, '卡片保留编辑按钮');
+
+// 关联 PR 徽章（GitHub 专属字段；Gitea 不返回该字段 → 整块不渲染）
+ch = cardHTML(state.issues[0]);
+assert(ch.indexOf('card-prs') >= 0 && ch.indexOf('pr-chip') >= 0, '有关联 PR 的卡片渲染 PR 徽章');
+assert(ch.indexOf('href="https://github.com/o/r/pull/7"') >= 0, 'PR 徽章链接到对应 PR');
+assert(ch.indexOf('pr-merged') >= 0 && ch.indexOf('已合并') >= 0, 'PR 徽章显示已合并状态');
+assert(ch.indexOf('abc1234') >= 0 && ch.indexOf('pr-sha') >= 0, 'PR 徽章显示合并提交短 hash');
+assert(ch.indexOf('fix/a') >= 0, 'PR 徽章 title 带来源分支');
+const noPr = Object.assign({}, state.issues[0], { closedByPullRequestsReferences: { totalCount: 0, nodes: [] } });
+assert(cardHTML(noPr).indexOf('card-prs') < 0, '无关联 PR 时不渲染 PR 区块');
+const giteaIssue = Object.assign({}, state.issues[0], { closedByPullRequestsReferences: undefined });
+assert(cardHTML(giteaIssue).indexOf('card-prs') < 0, '缺少 PR 字段（Gitea）时不渲染 PR 区块');
+const manyPr = Object.assign({}, state.issues[0], {
+  closedByPullRequestsReferences: {
+    totalCount: 5,
+    nodes: [{ number: 1, state: 'OPEN', url: 'u1' }, { number: 2, state: 'OPEN', url: 'u2' }, { number: 3, state: 'MERGED', url: 'u3' }],
+  },
+});
+assert(cardHTML(manyPr).indexOf('+2') >= 0 && cardHTML(manyPr).indexOf('pr-more') >= 0, '关联 PR 超过 3 个时显示 +N');
+const draftPr = Object.assign({}, state.issues[0], {
+  closedByPullRequestsReferences: { totalCount: 1, nodes: [{ number: 8, title: '草稿修复', state: 'OPEN', isDraft: true, url: 'u8' }] },
+});
+assert(cardHTML(draftPr).indexOf('pr-draft') >= 0 && cardHTML(draftPr).indexOf('草稿') >= 0, '草稿 PR 显示草稿状态');
+assert(cardHTML(draftPr).indexOf('pr-sha') < 0, '未合并 PR 不显示合并提交 hash');
 
 // 编辑模式：无已完成按钮、按仓库百分比支持显示支持百分比、归档/删除合并为单按钮
 state.editor = { mode: 'edit', targetId: 'I1', title: 'x', body: '', percent: false, progress: 0, tags: new Set(['工作']) };

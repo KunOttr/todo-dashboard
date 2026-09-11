@@ -219,6 +219,33 @@ main {
 .card-number a { color: #8c959f; text-decoration: none; }
 .card-number a:hover { text-decoration: underline; }
 
+/* 关联 PR 徽章（GitHub / GitHub Enterprise 专属，见「帮助 → 注意事项」） */
+.card-prs {
+  margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+}
+.pr-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--border); background: #f6f8fa;
+  font-size: 12px; line-height: 18px; text-decoration: none; color: var(--text);
+}
+.pr-chip:hover { text-decoration: none; border-color: var(--primary); }
+.pr-chip .pr-num { font-weight: 600; color: var(--text-muted); }
+.pr-chip .pr-state { white-space: nowrap; }
+.pr-chip .pr-sha {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px; padding: 0 4px; border-radius: 4px;
+  color: var(--text-muted); background: rgba(0, 0, 0, .05);
+}
+.pr-chip.pr-open { border-color: #9ad3a5; background: #e8f5ec; color: var(--green); }
+.pr-chip.pr-open .pr-num { color: var(--green); }
+.pr-chip.pr-merged { border-color: #ccb6f2; background: #f4efff; color: #5b32a3; }
+.pr-chip.pr-merged .pr-num { color: #5b32a3; }
+.pr-chip.pr-closed { border-color: #f2b8bc; background: #ffebe9; color: var(--red); }
+.pr-chip.pr-closed .pr-num { color: var(--red); }
+.pr-chip.pr-draft { border-style: dashed; }
+.pr-more { font-size: 12px; color: var(--text-muted); }
+
 .progress-row {
   margin-top: 10px; display: flex; align-items: center; gap: 10px;
 }

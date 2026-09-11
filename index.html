@@ -183,6 +183,16 @@
           </ul>
         </div>
         <div class="help-section">
+          <h4>关联 PR 与合并提交（GitHub 专属）</h4>
+          <ul>
+            <li>待办卡片下方会显示该问题对应的<b>修复 PR</b>：<code>#编号</code> + 状态（<code>待合并</code> / <code>草稿</code> / <code>已合并</code> / <code>已关闭</code>）+ 合并提交的短 hash，点击直接跳转 PR。最多列出 3 个，超出显示 <code>+N</code>。</li>
+            <li>关联关系来自 GitHub 的 <b>Issue ↔ Pull Request 反向关联</b>：在 PR 描述或提交信息里写 <code>fixes #12</code> / <code>closes #12</code> / <code>resolves #12</code> 等关闭关键词即可建立。<b>已合并的 PR 同样会被列出</b>，所以已完成的待办仍能看到自己的修复提交。</li>
+            <li>短 hash 取的是<b>合并提交</b>：squash / merge 合并后指向基准分支上的那一个提交，可直接 <code>git show &lt;hash&gt;</code> 查看改动；rebase 合并的 PR 可能没有合并提交，此时不显示 hash。</li>
+            <li><b>仅 GitHub / GitHub Enterprise 仓库支持</b>：Gitea API 没有 Issue↔PR 反向关联能力，Gitea 仓库不显示该区块（不做跨平台降级模拟），也就不会为此多花请求。</li>
+            <li>该信息随待办列表<b>一起获取，不增加额外的 API 请求</b>；PR 数量随列表查询受节点上限约束，因此每个待办最多取前 3 个。</li>
+          </ul>
+        </div>
+        <div class="help-section">
           <h4>自动同步（防限速）</h4>
           <ul>
             <li>所有操作先在本地生效并排队，距最后一次操作 <b>5 分钟</b>后自动批量保存到 GitHub。</li>
