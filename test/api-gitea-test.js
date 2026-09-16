@@ -110,6 +110,43 @@ requests.length = 0;
 await apiDeleteLabel(cfg, '9');
 assert(requests.some(r => r.method === 'DELETE' && r.url.indexOf('/labels/9') >= 0), 'apiDeleteLabel');
 
+// ---- 新增复合 API（Gitea 分支）----
+// updateIssue / setIssueState 返回值补全
+requests.length = 0;
+const upd = await apiUpdateIssue(cfg, '1', { title: '改', body: 'b' });
+assert(upd && upd.title === '改' && upd.id === '1', 'apiUpdateIssue 返回内部结构');
+requests.length = 0;
+const st = await apiSetIssueState(cfg, '1', 'closed');
+assert(st && st.state === 'CLOSED', 'apiSetIssueState 返回内部结构');
+requests.length = 0;
+await apiReopenIssue(cfg, '1');
+
+// apiGetInitial：Gitea 并行（repo + labels + issues）
+requests.length = 0;
+const ini = await apiGetInitial(cfg);
+assert(ini.repoId === '5' && ini.labels.length === 2 && ini.issues.length === 2, 'apiGetInitial（Gitea 并行）');
+
+// apiApplyProgress：目标标签缺失 → 惰性创建；旧标签移除
+requests.length = 0;
+const ap = await apiApplyProgress(cfg, '1', 80, [], null);
+assert(ap.state === 'OPEN' && ap.labels.length >= 1, 'apiApplyProgress 返回状态与标签');
+assert(requests.some(r => r.method === 'POST' && r.url.indexOf('/repos/o/r/labels') >= 0 && r.body.name === '进度:80%'), 'apiApplyProgress 惰性创建进度标签');
+requests.length = 0;
+const ap2 = await apiApplyProgress(cfg, '1', 20, [{ id: 2, name: '归档' }], '2');
+assert(requests.some(r => r.method === 'DELETE' && r.url.indexOf('/issues/1/labels/2') >= 0), 'apiApplyProgress 移除旧进度标签');
+
+// apiApplyTags：添加 + 移除并行，返回标签列表
+requests.length = 0;
+const t1 = await apiApplyTags(cfg, '1', ['1'], ['2']);
+assert(requests.some(r => r.method === 'POST' && r.url.indexOf('/issues/1/labels') >= 0), 'apiApplyTags 添加');
+assert(requests.some(r => r.method === 'DELETE' && r.url.indexOf('/issues/1/labels/2') >= 0), 'apiApplyTags 移除');
+assert(t1.length === 1, 'apiApplyTags 返回标签列表');
+
+// apiBatchDeleteLabels：并行删除多个标签
+requests.length = 0;
+await apiBatchDeleteLabels(cfg, ['1', '2']);
+assert(requests.filter(r => r.method === 'DELETE' && r.url.indexOf('/labels/') >= 0 && r.url.indexOf('/issues/') < 0).length === 2, 'apiBatchDeleteLabels 并行删除多个');
+
 // 错误处理
 let threw = '';
 try { await apiGetIssueBasics(cfg, '999'); } catch (e) { threw = e.message; }

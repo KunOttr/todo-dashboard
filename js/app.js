@@ -32,6 +32,8 @@ const state = {
   autoSaveDueAt: 0,
   flushing: false,
   progressPopoverFor: null,
+  // token 失效标记：401 后置位，设置弹窗中醒目提示
+  repoAuthError: false,
   // 设置弹窗：正在编辑的仓库卡片
   repoCardEdit: null, // null | {mode:'edit',index} | {mode:'add'}
 };
@@ -213,23 +215,14 @@ function renderAppState() {
 
 /* ---------------- 数据加载 ---------------- */
 
+/* 系统标签只确保「归档」；进度标签惰性创建（applyProgress 时不存在才创建，省首次加载的预创建请求） */
 async function ensureSpecialLabels(cfg, labels) {
-  const existing = new Set(labels.map((l) => l.name));
-  const need = [APP_CONFIG.ARCHIVE_TAG];
-  if (cfg.useProgress) {
-    for (let v = 0; v <= APP_CONFIG.PROGRESS_MAX; v += APP_CONFIG.PROGRESS_STEP) {
-      need.push(APP_CONFIG.PROGRESS_PREFIX + v + '%');
-    }
-  }
-  for (const n of need) {
-    if (existing.has(n)) continue;
-    try {
-      const color = n === APP_CONFIG.ARCHIVE_TAG ? APP_CONFIG.LABEL_COLORS.archive : APP_CONFIG.LABEL_COLORS.progress;
-      const l = await apiCreateLabel(cfg, cfg.repoId, n, color);
-      labels.push(l);
-    } catch (e) {
-      console.warn('创建系统标签失败: ' + n, e);
-    }
+  if (labels.some((l) => l.name === APP_CONFIG.ARCHIVE_TAG)) return labels;
+  try {
+    const l = await apiCreateLabel(cfg, cfg.repoId, APP_CONFIG.ARCHIVE_TAG, APP_CONFIG.LABEL_COLORS.archive);
+    labels.push(l);
+  } catch (e) {
+    console.warn('创建系统标签失败: ' + APP_CONFIG.ARCHIVE_TAG, e);
   }
   return labels;
 }
@@ -243,18 +236,20 @@ async function connect() {
   }
   setLoading(true);
   try {
-    const repo = await apiGetRepo(cfg);
-    cfg.repoId = repo.id;
-    const labels = await apiGetLabels(cfg);
-    state.labels = await ensureSpecialLabels(cfg, labels);
-    state.issues = await apiGetIssues(cfg);
+    // 合并查询：repo id + labels + issues 一次拿全（GraphQL 单 query；Gitea 并行）
+    const data = await apiGetInitial(cfg);
+    cfg.repoId = data.repoId;
+    state.labels = await ensureSpecialLabels(cfg, data.labels);
+    state.issues = data.issues;
     state.connState = 'ok';
     state.connError = '';
+    state.repoAuthError = false;
     render();
     renderAppState();
   } catch (e) {
     state.connState = 'error';
     state.connError = e.message;
+    if (e.code === 'unauthorized') state.repoAuthError = true;
     renderAppState();
     toast('连接失败: ' + e.message, true);
   } finally {
@@ -276,6 +271,11 @@ async function refresh() {
 function queueOp(op) {
   // 同类操作按 (kind,id) 去重，只保留最新一次
   if (['update', 'setProgress', 'toggleDone', 'setTags', 'archive', 'removeProgress'].includes(op.kind)) {
+    // 连续调整进度/移除进度：继承旧 op 记录的最早进度标签，保证移除的是服务端真实旧标签
+    if (op.kind === 'setProgress' || op.kind === 'removeProgress') {
+      const prev = state.pendingOps.find((o) => o.kind === op.kind && o.id === op.id);
+      if (prev && prev.oldProgressLabels && !op.oldProgressLabels) op.oldProgressLabels = prev.oldProgressLabels;
+    }
     state.pendingOps = state.pendingOps.filter((o) => !(o.kind === op.kind && o.id === op.id));
   }
   // 新建后立即删除：撤销 create 操作
@@ -293,56 +293,64 @@ function scheduleAutoSave() {
   renderSyncButton();
 }
 
-async function applyProgressLabel(cfg, apiId, value, basics) {
-  if (!basics) basics = await apiGetIssueBasics(cfg, apiId);
-  const cur = (basics.labels || []).filter((l) => isProgressLabel(l.name));
-  if (cur.length) await apiRemoveLabels(cfg, apiId, cur.map((l) => l.id));
-  const targetName = APP_CONFIG.PROGRESS_PREFIX + value + '%';
-  let label = state.labels.find((l) => l.name === targetName);
-  if (!label) {
-    label = await apiCreateLabel(cfg, cfg.repoId, targetName, APP_CONFIG.LABEL_COLORS.progress);
-    state.labels.push(label);
-  }
-  await apiAddLabels(cfg, apiId, [label.id]);
-  return basics;
-}
-
 async function execOp(op, idMap) {
   const cfg = currentRepoConfig();
   if (!cfg) throw new Error('未配置仓库');
   const apiId = op.kind === 'create' ? null : (idMap[op.id] || op.id);
+  const patchIssue = (id, patch) => {
+    state.issues = state.issues.map((i) => (i.id === id ? Object.assign({}, i, patch) : i));
+  };
   switch (op.kind) {
     case 'create': {
       const labelIds = op.labels.map((n) => state.labels.find((l) => l.name === n)).filter(Boolean).map((l) => l.id);
       const issue = await apiCreateIssue(cfg, cfg.repoId, { title: op.title, body: op.body, labelIds });
-      if (op.percent) await applyProgressLabel(cfg, issue.id, op.progress);
-      if (op.done) await apiCloseIssue(cfg, issue.id);
       idMap[op.tempId] = issue.id;
+      if (op.percent) {
+        const targetName = APP_CONFIG.PROGRESS_PREFIX + op.progress + '%';
+        let targetLabel = state.labels.find((l) => l.name === targetName);
+        const result = await apiApplyProgress(cfg, issue.id, op.progress, [], targetLabel ? targetLabel.id : null);
+        if (!targetLabel && result.createdLabel) state.labels.push(result.createdLabel);
+        // 状态整合（100% 关闭）：修复「本地显示已完成但服务端 OPEN」的不一致
+        if (result.state) { issue.state = result.state; issue.closedAt = result.closedAt; }
+        if (result.labels) issue.labels = { nodes: result.labels };
+      }
+      if (op.done && !(op.percent && op.progress >= 100)) await apiCloseIssue(cfg, issue.id);
+      // 用服务端返回替换本地乐观 tempId issue（同步增量，无需全量刷新）
+      state.issues = state.issues.map((i) => (i.id === op.tempId ? issue : i));
       if (state.editor && state.editor.mode === 'new' && state.editor.targetId === op.tempId) {
         state.editor.targetId = issue.id; // 刷新后编辑卡片仍指向该待办
       }
       break;
     }
-    case 'update':
-      await apiUpdateIssue(cfg, apiId, { title: op.title, body: op.body });
+    case 'update': {
+      const updated = await apiUpdateIssue(cfg, apiId, { title: op.title, body: op.body });
+      if (updated) patchIssue(apiId, { title: updated.title, body: updated.body, url: updated.url });
       break;
+    }
     case 'toggleDone': {
-      const basics = await apiGetIssueBasics(cfg, apiId);
-      if (op.done && basics.state !== 'CLOSED') await apiCloseIssue(cfg, apiId);
-      if (!op.done && basics.state !== 'OPEN') await apiReopenIssue(cfg, apiId);
+      // close/reopen 在两端均幂等，直接调用，无需先查状态
+      const updated = await apiSetIssueState(cfg, apiId, op.done ? 'closed' : 'open');
+      if (updated) patchIssue(apiId, { state: updated.state, closedAt: updated.closedAt });
       break;
     }
     case 'setProgress': {
-      const basics = await applyProgressLabel(cfg, apiId, op.value);
-      // 百分比与完成整合（以服务端状态为准）：100% 完成，<100% 进行中
-      if (op.value >= 100 && basics.state !== 'CLOSED') await apiCloseIssue(cfg, apiId);
-      else if (op.value < 100 && basics.state !== 'OPEN') await apiReopenIssue(cfg, apiId);
+      const targetName = APP_CONFIG.PROGRESS_PREFIX + op.value + '%';
+      let targetLabel = state.labels.find((l) => l.name === targetName);
+      const result = await apiApplyProgress(cfg, apiId, op.value, op.oldProgressLabels || [], targetLabel ? targetLabel.id : null);
+      if (!targetLabel && result.createdLabel) state.labels.push(result.createdLabel);
+      // 百分比与完成整合：100% 关闭，<100% 重开（服务端为准）
+      if (result.labels) patchIssue(apiId, { labels: { nodes: result.labels } });
+      if (result.state) patchIssue(apiId, { state: result.state, closedAt: result.closedAt });
       break;
     }
     case 'removeProgress': {
-      const basics = await apiGetIssueBasics(cfg, apiId);
-      const cur = (basics.labels || []).filter((l) => isProgressLabel(l.name));
-      if (cur.length) await apiRemoveLabels(cfg, apiId, cur.map((l) => l.id));
+      let old = op.oldProgressLabels || [];
+      if (!old.length) {
+        // 兼容未记录旧标签的 op：回退查一次服务端进度标签
+        const basics = await apiGetIssueBasics(cfg, apiId);
+        old = (basics.labels || []).filter((l) => isProgressLabel(l.name));
+      }
+      if (old.length) await apiRemoveLabels(cfg, apiId, old.map((l) => l.id));
       break;
     }
     case 'setTags': {
@@ -350,15 +358,17 @@ async function execOp(op, idMap) {
       const baseline = new Set(op.baseline);
       const add = state.labels.filter((l) => !isArchiveLabel(l.name) && !baseline.has(l.name) && target.has(l.name)).map((l) => l.id);
       const remove = state.labels.filter((l) => !isArchiveLabel(l.name) && baseline.has(l.name) && !target.has(l.name)).map((l) => l.id);
-      if (add.length) await apiAddLabels(cfg, apiId, add);
-      if (remove.length) await apiRemoveLabels(cfg, apiId, remove);
+      const labels = await apiApplyTags(cfg, apiId, add, remove);
+      if (labels && labels.length) patchIssue(apiId, { labels: { nodes: labels } });
       break;
     }
     case 'archive': {
       const archLabel = state.labels.find((l) => l.name === APP_CONFIG.ARCHIVE_TAG);
       if (!archLabel) throw new Error('「归档」标签不存在');
-      if (op.archived) await apiAddLabels(cfg, apiId, [archLabel.id]);
-      else await apiRemoveLabels(cfg, apiId, [archLabel.id]);
+      const labels = op.archived
+        ? await apiAddLabels(cfg, apiId, [archLabel.id])
+        : await apiRemoveLabels(cfg, apiId, [archLabel.id]);
+      if (Array.isArray(labels) && labels.length) patchIssue(apiId, { labels: { nodes: labels } });
       break;
     }
     case 'delete':
@@ -385,6 +395,7 @@ async function flush() {
     } catch (e) {
       failedIdx = i;
       failedMsg = e.message;
+      if (e.code === 'unauthorized') state.repoAuthError = true;
       break;
     }
   }
@@ -395,7 +406,8 @@ async function flush() {
       if (failedIdx > 0) await refresh();
       toast('同步失败：' + failedMsg, true);
     } else {
-      await refresh();
+      // 增量同步：execOp 已用服务端返回值更新本地 state，无需全量刷新（省 2+N 次请求）
+      render();
       toast('已同步');
     }
   } catch (e) {
@@ -447,15 +459,20 @@ function optimisticToggleDone(issue) {
 function optimisticSetProgress(issue, value) {
   const node = mkProgressLabel(value);
   const idx = issue.labels.nodes.findIndex((l) => isProgressLabel(l.name));
-  if (idx >= 0) issue.labels.nodes[idx] = node;
-  else issue.labels.nodes.push(node);
+  let oldProgressLabels = null;
+  if (idx >= 0) {
+    // 只记录服务端真实标签 id（本地乐观创建的 local-progress 无服务端 id，传给移除接口会 422/报错）
+    const old = issue.labels.nodes[idx];
+    if (!isTempId(old.id)) oldProgressLabels = [old];
+    issue.labels.nodes[idx] = node;
+  } else issue.labels.nodes.push(node);
   if (value >= 100) {
     if (issue.state !== 'CLOSED') { issue.state = 'CLOSED'; issue.closedAt = new Date().toISOString(); }
   } else if (issue.state === 'CLOSED') {
     issue.state = 'OPEN';
     issue.closedAt = null;
   }
-  queueOp({ kind: 'setProgress', id: issue.id, value });
+  queueOp({ kind: 'setProgress', id: issue.id, value, oldProgressLabels });
 }
 
 function optimisticSetTags(issue, targetNames) {
@@ -767,7 +784,7 @@ function editorHTML() {
   <article class="task-card editor-card">
     <div class="card-main">
       <input type="text" class="editor-title" id="editorTitle" value="${escapeHTML(ed.title)}" placeholder="待办标题">
-      <textarea class="editor-body" id="editorBody" rows="2" placeholder="描述（可选）">${escapeHTML(ed.body)}</textarea>
+      <textarea class="editor-body" id="editorBody" rows="5" placeholder="描述（可选）">${escapeHTML(ed.body)}</textarea>
       <div class="editor-meta">
         ${useProgress ? `<label class="editor-inline"><input type="checkbox" id="editorPercent"${ed.percent ? ' checked' : ''}> 支持百分比</label>` : ''}
       </div>
@@ -832,8 +849,9 @@ function saveEditor() {
     if (wantPercent && !meta0.percent) {
       optimisticSetProgress(issue, ed.progress);
     } else if (useProgress && !wantPercent && meta0.percent) {
+      const oldProgressLabels = issue.labels.nodes.filter((l) => isProgressLabel(l.name) && !isTempId(l.id));
       issue.labels.nodes = issue.labels.nodes.filter((l) => !isProgressLabel(l.name));
-      queueOp({ kind: 'removeProgress', id: issue.id });
+      queueOp({ kind: 'removeProgress', id: issue.id, oldProgressLabels });
     } else if (wantPercent && meta0.percent && ed.progress !== meta0.progress) {
       optimisticSetProgress(issue, ed.progress);
     }
@@ -859,8 +877,9 @@ function openProgressPopover(issueId, anchor) {
     </div>`;
   const pop = $('#progressPopover');
   const rect = anchor.getBoundingClientRect();
-  pop.style.left = Math.min(rect.left, window.innerWidth - 250) + 'px';
-  pop.style.top = (rect.bottom + 6) + 'px';
+  // 弹层位置钳制在视口内，避免窄屏/底部卡片时溢出屏幕
+  pop.style.left = Math.min(Math.max(rect.left, 8), Math.max(window.innerWidth - 250, 8)) + 'px';
+  pop.style.top = Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 130)) + 'px';
   pop.classList.remove('hidden');
   state.progressPopoverFor = issueId;
 }
@@ -868,6 +887,64 @@ function openProgressPopover(issueId, anchor) {
 function closeProgressPopover() {
   $('#progressPopover').classList.add('hidden');
   state.progressPopoverFor = null;
+}
+
+/* ---------------- 移动端：长按卡片操作菜单 ---------------- */
+
+let longPressTimer = null;
+let longPressFired = false;
+const LONG_PRESS_MS = 500;
+
+function cancelLongPress() {
+  clearTimeout(longPressTimer);
+  longPressTimer = null;
+  longPressFired = false;
+}
+
+function openCardMenu(card, x, y) {
+  const menu = $('#cardMenu');
+  const titleEl = card.querySelector('.card-title');
+  $('#cardMenuTitle').textContent = titleEl ? titleEl.textContent : '';
+  menu.dataset.cardId = card.dataset.id;
+  menu.style.left = Math.min(Math.max(x, 8), window.innerWidth - 170) + 'px';
+  menu.style.top = Math.min(Math.max(y, 8), window.innerHeight - 140) + 'px';
+  menu.classList.remove('hidden');
+}
+
+function closeCardMenu() {
+  $('#cardMenu').classList.add('hidden');
+  delete $('#cardMenu').dataset.cardId;
+}
+
+/* ---------------- 移动端：全屏文本输入 ---------------- */
+
+let fullEditorSource = null;
+
+function openFullEditor(textarea) {
+  fullEditorSource = textarea;
+  $('#fullEditorText').value = textarea.value;
+  $('#fullEditor').classList.remove('hidden');
+  $('#fullEditorText').focus();
+}
+
+function closeFullEditor() {
+  $('#fullEditor').classList.add('hidden');
+  fullEditorSource = null;
+}
+
+// 应用弹层中当前滑块值并关闭（点击弹层外关闭 = 确定；值与原来一致则不提交）
+function applyProgressPopover() {
+  const slider = document.getElementById('popProgress');
+  const issue = state.issues.find((i) => i.id === state.progressPopoverFor);
+  if (slider && issue) {
+    const v = parseInt(slider.value, 10);
+    if (v !== deriveIssueMeta(issue).progress) {
+      optimisticSetProgress(issue, v);
+      render();
+      toast('进度已更新（待自动同步）');
+    }
+  }
+  closeProgressPopover();
 }
 
 /* ---------------- 标签弹窗 ---------------- */
@@ -977,16 +1054,18 @@ async function addNewTag() {
 async function deleteTagsNow(names) {
   const cfg = currentRepoConfig();
   if (!cfg) return;
-  for (const name of names) {
-    const label = state.labels.find((l) => l.name === name);
-    if (!label) continue;
-    try {
-      await apiDeleteLabel(cfg, label.id);
-      state.labels = state.labels.filter((l) => l.id !== label.id);
-      state.filters.selectedTags = state.filters.selectedTags.filter((n) => n !== label.name);
-    } catch (e) {
-      toast('删除「' + name + '」失败: ' + e.message, true);
-    }
+  const labels = names
+    .map((name) => state.labels.find((l) => l.name === name))
+    .filter(Boolean);
+  if (!labels.length) return;
+  try {
+    await apiBatchDeleteLabels(cfg, labels.map((l) => l.id));
+    const removedIds = new Set(labels.map((l) => l.id));
+    const removedNames = new Set(labels.map((l) => l.name));
+    state.labels = state.labels.filter((l) => !removedIds.has(l.id));
+    state.filters.selectedTags = state.filters.selectedTags.filter((n) => !removedNames.has(n));
+  } catch (e) {
+    toast('删除标签失败: ' + e.message, true);
   }
   await refresh();
 }
@@ -1081,13 +1160,19 @@ function renderRepoCards() {
     const active = idx === cfg.activeIndex;
     const providerName = r.provider === 'gitea' ? 'Gitea' : 'GitHub';
     const tokenState = r.token ? '已配置' : '未配置';
+    const authWarn = active && state.repoAuthError
+      ? '<div class="repo-auth-error">⚠ Token 已过期或无效，请点击「编辑」重新填写并保存</div>'
+      : '';
+    const tUrl = tokenManageUrl(r);
     html += `<div class="repo-card">
       <div class="repo-head"><strong>${escapeHTML(r.owner)} / ${escapeHTML(r.repo)}</strong>
         <span class="sys-badge">${providerName}</span>
         ${active ? '<span class="sys-badge">当前</span>' : ''}
       </div>
+      ${authWarn}
       <div class="repo-meta">Token: ${tokenState} · 百分比: ${r.useProgress ? '开启' : '关闭'}${r.baseUrl ? ' · ' + escapeHTML(r.baseUrl.replace(/^https?:\/\//, '')) : ''}</div>
       <div class="repo-actions">
+        ${tUrl ? `<a class="btn" href="${tUrl}" target="_blank" rel="noopener">管理 Token ↗</a>` : ''}
         ${active ? '' : `<button type="button" class="btn" data-repo-connect="${idx}">连接</button>`}
         <button type="button" class="btn" data-repo-edit="${idx}">编辑</button>
         <button type="button" class="btn danger" data-repo-del="${idx}">删除</button>
@@ -1099,6 +1184,17 @@ function renderRepoCards() {
     html = '<div class="card-time">尚未配置仓库，点击下方按钮添加。</div>';
   }
   el.innerHTML = html;
+}
+
+/* 跳转对应平台 Token 管理页：GitHub Fine-grained / GHE 自建 / Gitea 自建 */
+function tokenManageUrl(r) {
+  if (r.provider === 'gitea') {
+    const base = (r.baseUrl || '').replace(/\/+$/, '');
+    return base ? base + '/user/settings/applications' : '';
+  }
+  const base = (r.baseUrl || '').replace(/\/+$/, '');
+  if (base && !/^(https?:)?\/\/github\.com$/i.test(base)) return base + '/settings/personal-access-tokens';
+  return 'https://github.com/settings/personal-access-tokens';
 }
 
 function repoEditCardHTML(idx, r) {
@@ -1203,6 +1299,8 @@ function saveRepoCard(idx) {
   }
   saveConfig();
   state.repoCardEdit = null;
+  // 更新了当前仓库的 Token：清除失效标记
+  if (idx === state.config.activeIndex) state.repoAuthError = false;
   msg.textContent = '';
   renderRepoCards();
 
@@ -1210,8 +1308,9 @@ function saveRepoCard(idx) {
     // 确认关闭：清除当前活动仓库所有待办的百分比标签
     for (const i of state.issues) {
       if (i.labels.nodes.some((l) => isProgressLabel(l.name))) {
+        const oldProgressLabels = i.labels.nodes.filter((l) => isProgressLabel(l.name) && !isTempId(l.id));
         i.labels.nodes = i.labels.nodes.filter((l) => !isProgressLabel(l.name));
-        queueOp({ kind: 'removeProgress', id: i.id });
+        queueOp({ kind: 'removeProgress', id: i.id, oldProgressLabels });
       }
     }
     render();
@@ -1412,7 +1511,68 @@ function bindEvents() {
     }
   });
 
+  // 移动端：长按待办卡片弹出操作菜单（编辑）
+  $('#main').addEventListener('touchstart', (e) => {
+    if (window.innerWidth > 720) return;
+    const card = e.target.closest('.task-card');
+    if (!card || card.classList.contains('editor-card')) return;
+    cancelLongPress();
+    const touch = e.touches[0];
+    longPressTimer = setTimeout(() => {
+      longPressFired = true;
+      openCardMenu(card, touch.clientX, touch.clientY);
+    }, LONG_PRESS_MS);
+  }, { passive: true });
+  $('#main').addEventListener('touchmove', cancelLongPress, { passive: true });
+  $('#main').addEventListener('touchcancel', cancelLongPress, { passive: true });
+  $('#main').addEventListener('touchend', (e) => {
+    if (longPressFired) e.preventDefault(); // 阻止长按后的合成 click
+    cancelLongPress();
+  }, { passive: false });
+  // 长按菜单：选择「编辑」进入编辑模式
+  $('#cardMenu').addEventListener('click', (e) => {
+    const item = e.target.closest('[data-card-menu]');
+    if (!item) return;
+    const cardId = $('#cardMenu').dataset.cardId;
+    closeCardMenu();
+    if (item.dataset.cardMenu === 'edit') {
+      const issue = state.issues.find((i) => i.id === cardId);
+      if (issue) openEditor(issue);
+    }
+  });
+
+  // 移动端：点击编辑器描述框进入全屏输入
   $('#main').addEventListener('click', (e) => {
+    if (window.innerWidth > 720) return;
+    const body = e.target.closest('#editorBody');
+    if (body) { e.preventDefault(); openFullEditor(body); }
+  });
+
+  // 移动端「更多」菜单：帮助 / 设置
+  $('#btnMore').addEventListener('click', () => {
+    $('#moreMenu').classList.toggle('hidden');
+  });
+  $('#moreMenu').addEventListener('click', (e) => {
+    const item = e.target.closest('[data-more]');
+    if (!item) return;
+    $('#moreMenu').classList.add('hidden');
+    if (item.dataset.more === 'help') openModal($('#helpModal'));
+    else if (item.dataset.more === 'settings') openSetupModal();
+  });
+
+  // 全屏文本输入：完成回填 / 取消
+  $('#fullEditorOk').addEventListener('click', () => {
+    if (fullEditorSource) {
+      fullEditorSource.value = $('#fullEditorText').value;
+      if (state.editor) state.editor.body = fullEditorSource.value;
+    }
+    closeFullEditor();
+  });
+  $('#fullEditorCancel').addEventListener('click', closeFullEditor);
+
+  $('#main').addEventListener('click', (e) => {
+    // 长按后的合成点击（touch 事件已 preventDefault，双保险忽略）
+    if (longPressFired) { longPressFired = false; return; }
     // 编辑器按钮
     const editorBtn = e.target.closest('[data-act="editor-save"],[data-act="editor-cancel"],[data-act="editor-archive-delete"]');
     if (editorBtn) {
@@ -1471,30 +1631,22 @@ function bindEvents() {
     onCardAction(card.dataset.id, btn.dataset.act);
   });
 
-  // 进度弹层：滑动条实时更新数值
+  // 进度弹层：滑动条实时更新数值（不提交，点击弹层外关闭时生效）
   $('#progressPopover').addEventListener('input', (e) => {
     if (e.target.id !== 'popProgress') return;
     const label = document.getElementById('popProgressLabel');
     if (label) label.textContent = e.target.value + '%';
-  });
-  // 进度弹层：松开滑块确认并应用
-  $('#progressPopover').addEventListener('change', (e) => {
-    if (e.target.id !== 'popProgress') return;
-    const issue = state.issues.find((i) => i.id === state.progressPopoverFor);
-    if (issue) {
-      optimisticSetProgress(issue, parseInt(e.target.value, 10));
-      render();
-      toast('进度已更新（待自动同步）');
-    }
-    closeProgressPopover();
   });
 
   // 关闭下拉 / 弹层
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#tagFilterDropdown')) $('#tagFilterMenu').classList.add('hidden');
     if (!e.target.closest('#repoSwitch')) $('#repoSwitchMenu').classList.add('hidden');
+    if (!e.target.closest('#moreMenu') && !e.target.closest('#btnMore')) $('#moreMenu').classList.add('hidden');
+    if (!e.target.closest('#cardMenu')) closeCardMenu();
     if (state.progressPopoverFor && !e.target.closest('#progressPopover') && !e.target.closest('[data-ring]')) {
-      closeProgressPopover();
+      // 点击弹层外关闭 = 应用当前滑块值（100% 完成也在此刻生效；想放弃需手动调回原值）
+      applyProgressPopover();
     }
   });
 
