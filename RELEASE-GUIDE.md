@@ -33,7 +33,7 @@
 
 | 角色 | 分支 | 稳定性 | 生命周期与说明 |
 |---|---|---|---|
-| 开发 | `feat/` `fix/` `refactor/` `style/` | **不稳定** | 短命；内部可随意迭代；验证后经 PR（squash）合入主干，合入即删 |
+| 开发 | `feat/` `fix/` `refactor/` `style/` | **不稳定** | 短命；内部可随意迭代；验证后经 PR（merge commit）合入主干，合入即删 |
 | 主干 | `master` | **始终可发布** | 只接受 PR 合入；每次合入都必须通过 `npm test` + `npm run build` |
 | 稳定化 | `release/x.y` | 冻结 | 【可选】需要多版本线维护或专门 QA 冻结时才建，短命；单人单线项目**不需要** |
 | 应急 | `hotfix/<主题>` | 应急 | 从**出问题的 tag** 切出，最小修复后回主干 |
@@ -41,6 +41,8 @@
 一句话：**不稳定隔离在特性分支，稳定由主干保证，发布由 tag 固化。**
 
 > 关键点：主干不是"开发分支"，而是"集成 + 发布基线"。特性分支再怎么乱，都不会直接影响线上——这就是"从不稳定中产出稳定"的机制来源。
+
+> **合入方式（2026-09-17 澄清）**：本项目采用 **merge commit**，**不用 squash**。依据（实测）：master 上历史 PR 的合并提交（#14 `e9955eb` / #16 `6eaa80f` / #17 `a3151bc` / #18 `f7252e6` / #19 `1267063`）**全部是双父的真合并提交**，分支内的分阶段提交与提交信息完整保留。本文件此前的"squash"表述与仓库实际历史不符，已统一更正。**合入即删分支**的要求不变。
 
 ---
 
@@ -89,7 +91,7 @@
 | 2 | **同步主干** | `git fetch -p && git checkout master && git merge --ff-only origin/master` |
 | 3 | **验证** | `npm ci && npm test && npm run build`（CI 跑同一套，本地先过一遍） |
 | 4 | **定版** | 按 §3 确定 `X.Y.Z`；更新 `package.json` + `CHANGELOG.md` |
-| 5 | **定版提交** | 走 PR（`chore/release-x.y.z`）→ **squash 合入 master** |
+| 5 | **定版提交** | 走 PR（`chore/release-x.y.z`）→ **merge 合入 master** |
 | 6 | **打标签** | `git tag -a vX.Y.Z -m "..."` → `git push origin vX.Y.Z` |
 | 7 | **发布 Release** | GitHub Release，正文 = CHANGELOG 对应段落（或自动生成） |
 | 8 | **部署** | 由 **tag 触发**的 Actions 构建并发布到 Pages（见 §6） |
@@ -106,7 +108,7 @@
 | 1 | 从**出问题的 tag** 切分支：`git checkout -b hotfix/<主题> vX.Y.Z`（保证基线就是线上代码） |
 | 2 | 最小修复 + 补测试（只修问题，**不得夹带新功能**） |
 | 3 | `npm test && npm run build` 验证 |
-| 4 | PR 到 `master` → squash 合入 |
+| 4 | PR 到 `master` → merge 合入 |
 | 5 | 按 **PATCH** 定版 → 打 tag → 触发部署 |
 | 6 | 若同时维护多条版本线，再 `git cherry-pick` 到对应 `release/x.y` 并补 tag |
 
