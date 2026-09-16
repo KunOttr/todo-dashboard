@@ -219,6 +219,12 @@
           </ul>
         </div>
         <div class="help-section">
+          <h4>注意事项</h4>
+          <ul>
+            <li><b>平台专属功能</b>：部分能力受各平台 API 限制，只在特定平台可用；不支持的平台上该项不显示，其余功能不受影响。可用范围取决于当前仓库配置的 <b>API 格式</b>，与仓库内的数据无关。</li>
+          </ul>
+        </div>
+        <div class="help-section">
           <h4>部署到 GitHub Pages</h4>
           <p>生产构建：仓库自带 <b>esbuild</b> 合并压缩流水线。<code>npm install</code> 后执行 <code>npm run build</code>，生成 <code>dist/</code>（<code>index.html</code> + 带内容 hash 的 <code>style.min.*.css</code> / <code>app.min.*.js</code>，共 3 个文件）。<b>部署单元是 <code>dist/</code>，源码不直接上线。</b></p>
           <p>部署方式任选其一（<b>不强制使用 workflow</b>）：<b>方式 A（推荐）</b>——手动 <code>npm run build</code> 后提交 <code>dist/</code>，在 <b>Settings → Pages → Deploy from a branch</b> 指向 <code>/dist</code> 目录；<b>方式 B（可选示例）</b>——把 <code>.github/workflows/pages.example.yml</code> <b>重命名为 <code>pages.yml</code></b> 并推送，Actions 会自动 <code>npm ci</code> → <code>npm run build</code> → 上传 <code>dist/</code> 发布。页面地址为 <code>https://&lt;用户名&gt;.github.io/&lt;仓库名&gt;/</code>。</p>
